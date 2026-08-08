@@ -24,12 +24,12 @@ import {
   type ConditionalCommandNode,
   type FunctionDefNode,
   type PipelineNode,
-  type ProcessSubstitutionPart,
   type RedirectionNode,
   type ScriptNode,
   type StatementNode,
   type SubshellNode,
   type WordNode,
+  type WordPart,
 } from "../ast/types.js";
 import * as ArithParser from "./arithmetic-parser.js";
 import * as CmdParser from "./command-parser.js";
@@ -41,18 +41,41 @@ import {
   isDollarDparenSubshell as isDollarDparenSubshellHelper,
   parseBacktickSubstitutionFromString,
   parseCommandSubstitutionFromString,
-  parseProcessSubstitutionFromString,
 } from "./parser-substitution.js";
 import {
   MAX_INPUT_SIZE,
   MAX_TOKENS,
   ParseBudget,
   ParseException,
+  WordParseContext,
 } from "./types.js";
 
 export type { ParseError } from "./types.js";
 // Re-export for backwards compatibility
 export { ParseException } from "./types.js";
+
+// Tokens retain physical lines from the outer lexer. Process sources own a
+// dense logical line sequence: leading/blank lines do not advance LINENO, while
+// each later command-bearing line advances it once.
+type PhysicalSourceLineOwner = {
+  type: "physical";
+  physicalLine: number;
+  logicalLine: number;
+};
+
+type ProcessSourceLineOwner = {
+  type: "process";
+  currentPhysicalLine: number;
+  currentLogicalLine: number;
+};
+
+type SourceLineOwner = PhysicalSourceLineOwner | ProcessSourceLineOwner;
+
+const ROOT_SOURCE_LINE_OWNER: PhysicalSourceLineOwner = {
+  type: "physical",
+  physicalLine: 1,
+  logicalLine: 1,
+};
 
 /**
  * Parser class - transforms tokens into AST
@@ -69,6 +92,7 @@ export class Parser {
   private readonly parseBudget: ParseBudget;
   private readonly ownsParseBudget: boolean;
   private _input = "";
+  private sourceLineOwner: SourceLineOwner = ROOT_SOURCE_LINE_OWNER;
 
   constructor(parseBudget?: ParseBudget) {
     this.parseBudget = parseBudget ?? new ParseBudget();
@@ -126,6 +150,7 @@ export class Parser {
       }
 
       this._input = input;
+      this.sourceLineOwner = ROOT_SOURCE_LINE_OWNER;
       const lexer = new Lexer(input, options);
       this.tokens = lexer.tokenize();
 
@@ -157,6 +182,7 @@ export class Parser {
       this.tokens = tokens;
       this.pos = 0;
       this.pendingHeredocs = [];
+      this.sourceLineOwner = ROOT_SOURCE_LINE_OWNER;
       this.parseBudget.chargeTokens(tokens.length);
       return this.parseScript();
     } finally {
@@ -188,6 +214,22 @@ export class Parser {
 
   getPos(): number {
     return this.pos;
+  }
+
+  getSourceLine(token: Token = this.current()): number {
+    if (this.sourceLineOwner.type === "process") {
+      if (token.line > this.sourceLineOwner.currentPhysicalLine) {
+        this.sourceLineOwner.currentPhysicalLine = token.line;
+        this.sourceLineOwner.currentLogicalLine += 1;
+      }
+      return this.sourceLineOwner.currentLogicalLine;
+    }
+
+    return (
+      this.sourceLineOwner.logicalLine +
+      token.line -
+      this.sourceLineOwner.physicalLine
+    );
   }
 
   /**
@@ -323,6 +365,8 @@ export class Parser {
   }
 
   private isCommandStart(): boolean {
+    if (this.currentTokenJoinsProcessSubstitution()) return true;
+
     const t = this.current().type;
     return (
       t === TokenType.WORD ||
@@ -422,6 +466,8 @@ export class Parser {
     const t = this.current().type;
     const v = this.current().value;
 
+    if (this.currentTokenJoinsProcessSubstitution()) return null;
+
     // Check for unexpected reserved words that can only appear inside specific constructs
     if (
       t === TokenType.DO ||
@@ -441,7 +487,10 @@ export class Parser {
     //   set -o errexit
     //   {ls;     # This is a command "{ls" that fails (not brace group)
     //   }        # This would be a syntax error, but errexit exits first
-    if (t === TokenType.RBRACE || t === TokenType.RPAREN) {
+    if (
+      (t === TokenType.RBRACE && !this.currentTokenJoinsProcessSubstitution()) ||
+      t === TokenType.RPAREN
+    ) {
       const errorMsg = `syntax error near unexpected token \`${v}'`;
       this.advance(); // Consume the token
       // Create an empty statement with a deferred error
@@ -469,7 +518,13 @@ export class Parser {
 
     // Check for pipe at statement start (e.g., newline followed by |)
     // This is a syntax error: "| cmd" with nothing before it
-    if (t === TokenType.PIPE || t === TokenType.PIPE_AMP) {
+    if (
+      t === TokenType.AMP ||
+      t === TokenType.AND_AND ||
+      t === TokenType.OR_OR ||
+      t === TokenType.PIPE ||
+      t === TokenType.PIPE_AMP
+    ) {
       this.error(`syntax error near unexpected token \`${v}'`);
     }
 
@@ -537,7 +592,10 @@ export class Parser {
     // time [-p] pipeline
     let timed = false;
     let timePosix = false;
-    if (this.check(TokenType.TIME)) {
+    if (
+      this.check(TokenType.TIME) &&
+      !this.currentTokenJoinsProcessSubstitution()
+    ) {
       this.advance();
       timed = true;
       // Check for -p option (POSIX format)
@@ -554,7 +612,10 @@ export class Parser {
 
     // Check for ! (negation) - multiple ! tokens can appear
     // e.g., "! ! true" means double negation (cancels out)
-    while (this.check(TokenType.BANG)) {
+    while (
+      this.check(TokenType.BANG) &&
+      !this.currentTokenJoinsProcessSubstitution()
+    ) {
       this.advance();
       negationCount++;
     }
@@ -593,6 +654,12 @@ export class Parser {
   // ===========================================================================
 
   private parseCommand(): CommandNode {
+    // A reserved or grammar-shaped token joined to `<(` / `>(` is one shell
+    // word, not syntax for the surrounding command grammar.
+    if (this.currentTokenJoinsProcessSubstitution()) {
+      return CmdParser.parseSimpleCommand(this);
+    }
+
     // Check for compound commands
     if (this.check(TokenType.IF)) {
       return CompoundParser.parseIf(this);
@@ -727,6 +794,14 @@ export class Parser {
   // ===========================================================================
 
   isWord(): boolean {
+    return (
+      this.isWordToken(WordParseContext.Default) ||
+      this.isProcessSubstitutionStart() ||
+      this.currentTokenJoinsProcessSubstitution()
+    );
+  }
+
+  private isWordToken(context: WordParseContext): boolean {
     const t = this.current().type;
     return (
       t === TokenType.WORD ||
@@ -751,17 +826,93 @@ export class Parser {
       t === TokenType.TIME ||
       t === TokenType.COPROC ||
       // Operators that can appear as words in command arguments (e.g., "[ ! -z foo ]")
-      t === TokenType.BANG
+      t === TokenType.BANG ||
+      (t === TokenType.ASSIGNMENT_WORD &&
+        (context &
+          (WordParseContext.Regex | WordParseContext.HeredocDelimiter)) !==
+          0)
     );
   }
 
-  parseWord(): WordNode {
-    const token = this.advance();
-    return this.parseWordFromString(
-      token.value,
-      token.quoted,
-      token.singleQuoted,
+  isProcessSubstitutionStart(offset = 0): boolean {
+    const operator = this.peek(offset);
+    const lparen = this.peek(offset + 1);
+    return (
+      (operator.type === TokenType.LESS || operator.type === TokenType.GREAT) &&
+      lparen.type === TokenType.LPAREN &&
+      operator.end === lparen.start
     );
+  }
+
+  private currentTokenJoinsProcessSubstitution(): boolean {
+    const type = this.current().type;
+    if (
+      !this.isWordToken(WordParseContext.Default) &&
+      type !== TokenType.ASSIGNMENT_WORD &&
+      type !== TokenType.LBRACE &&
+      type !== TokenType.RBRACE &&
+      type !== TokenType.DBRACK_START &&
+      type !== TokenType.DBRACK_END &&
+      type !== TokenType.FD_VARIABLE
+    ) {
+      return false;
+    }
+
+    return (
+      this.current().end === this.peek(1).start &&
+      this.isProcessSubstitutionStart(1)
+    );
+  }
+
+  private isAdjacentWordToken(context: WordParseContext): boolean {
+    const type = this.current().type;
+    return (
+      this.isWordToken(context) ||
+      type === TokenType.ASSIGNMENT_WORD ||
+      type === TokenType.LBRACE ||
+      type === TokenType.RBRACE ||
+      type === TokenType.DBRACK_START ||
+      type === TokenType.DBRACK_END ||
+      type === TokenType.FD_VARIABLE
+    );
+  }
+
+  parseWord(context: WordParseContext = WordParseContext.Default): WordNode {
+    if (this.isProcessSubstitutionStart()) {
+      return this.parseAdjacentWordParts([], this.current().start, context);
+    }
+
+    const token = this.advance();
+    const word = this.parseWordToken(token, context);
+    return this.parseAdjacentWordParts(word.parts, token.end, context);
+  }
+
+  parseAdjacentWordParts(
+    parts: WordPart[],
+    previousEnd: number,
+    context: WordParseContext = WordParseContext.Default,
+  ): WordNode {
+    while (previousEnd === this.current().start) {
+      if (this.isProcessSubstitutionStart()) {
+        parts.push(
+          this.parseProcessSubstitution(
+            (context & WordParseContext.HeredocDelimiter) !== 0,
+          ),
+        );
+        previousEnd = this.tokens[this.pos - 1].end;
+        continue;
+      }
+
+      if (!this.isAdjacentWordToken(context)) {
+        break;
+      }
+
+      const token = this.advance();
+      parts.push(...this.parseWordToken(token, context).parts);
+      previousEnd = token.end;
+    }
+
+    return AST.word(parts);
   }
 
   /**
@@ -769,15 +920,7 @@ export class Parser {
    * In bash, brace expansion does not occur inside [[ ]].
    */
   parseWordNoBraceExpansion(): WordNode {
-    const token = this.advance();
-    return this.parseWordFromString(
-      token.value,
-      token.quoted,
-      token.singleQuoted,
-      false, // isAssignment
-      false, // hereDoc
-      true, // noBraceExpansion
-    );
+    return this.parseWord(WordParseContext.NoBraceExpansion);
   }
 
   /**
@@ -787,15 +930,40 @@ export class Parser {
    * in the final regex pattern.
    */
   parseWordForRegex(): WordNode {
-    const token = this.advance();
+    return this.parseWord(
+      WordParseContext.NoBraceExpansion | WordParseContext.Regex,
+    );
+  }
+
+  private parseWordToken(token: Token, context: WordParseContext): WordNode {
+    if ((context & WordParseContext.HeredocDelimiter) !== 0) {
+      return AST.word([AST.literal(token.heredocDelimiter ?? token.value)]);
+    }
+
+    if (
+      token.type === TokenType.LBRACE ||
+      token.type === TokenType.RBRACE ||
+      token.type === TokenType.DBRACK_START ||
+      token.type === TokenType.DBRACK_END ||
+      token.type === TokenType.FD_VARIABLE
+    ) {
+      return AST.word([
+        AST.literal(
+          token.type === TokenType.FD_VARIABLE
+            ? `{${token.value}}`
+            : token.value,
+        ),
+      ]);
+    }
+
     return this.parseWordFromString(
       token.value,
       token.quoted,
       token.singleQuoted,
-      false, // isAssignment
-      false, // hereDoc
-      true, // noBraceExpansion
-      true, // regexPattern
+      (context & WordParseContext.Assignment) !== 0,
+      false,
+      (context & WordParseContext.NoBraceExpansion) !== 0,
+      (context & WordParseContext.Regex) !== 0,
     );
   }
 
@@ -834,15 +1002,40 @@ export class Parser {
     );
   }
 
-  parseProcessSubstitution(
-    value: string,
-    start: number,
-  ): { part: ProcessSubstitutionPart; endIndex: number } {
-    return parseProcessSubstitutionFromString(
-      value,
-      start,
-      () => new Parser(this.parseBudget),
-      (msg) => this.error(msg),
+  private parseProcessSubstitution(literal: boolean = false): WordPart {
+    const operator = this.advance();
+    this.expect(TokenType.LPAREN);
+    let firstBodyTokenOffset = 0;
+    while (
+      this.peek(firstBodyTokenOffset).type === TokenType.NEWLINE ||
+      this.peek(firstBodyTokenOffset).type === TokenType.COMMENT
+    ) {
+      firstBodyTokenOffset += 1;
+    }
+    const firstBodyToken = this.peek(firstBodyTokenOffset);
+    const previousSourceLineOwner = this.sourceLineOwner;
+    const logicalLine = this.getSourceLine(operator);
+    this.sourceLineOwner = {
+      type: "process",
+      currentPhysicalLine: firstBodyToken.line,
+      currentLogicalLine: logicalLine,
+    };
+    let body: ScriptNode;
+    try {
+      body = AST.script(this.parseCompoundList());
+    } finally {
+      this.sourceLineOwner = previousSourceLineOwner;
+    }
+    if (this.check(TokenType.EOF)) {
+      this.error("unexpected EOF while looking for matching `)'");
+    }
+    const closingParen = this.expect(TokenType.RPAREN);
+    if (literal) {
+      return AST.literal(this._input.slice(operator.start, closingParen.end));
+    }
+    return AST.processSubstitution(
+      body,
+      operator.type === TokenType.LESS ? "input" : "output",
     );
   }
 
@@ -1036,7 +1229,11 @@ export class Parser {
     const expression = this.parseArithmeticExpression(exprStr.trim());
     const redirections = this.parseOptionalRedirections();
 
-    return AST.arithmeticCommand(expression, redirections, startToken.line);
+    return AST.arithmeticCommand(
+      expression,
+      redirections,
+      this.getSourceLine(startToken),
+    );
   }
 
   private parseConditionalCommand(): ConditionalCommandNode {
@@ -1048,7 +1245,11 @@ export class Parser {
 
     const redirections = this.parseOptionalRedirections();
 
-    return AST.conditionalCommand(expression, redirections, startToken.line);
+    return AST.conditionalCommand(
+      expression,
+      redirections,
+      this.getSourceLine(startToken),
+    );
   }
 
   private parseFunctionDef(): FunctionDefNode {

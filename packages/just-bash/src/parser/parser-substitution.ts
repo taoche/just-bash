@@ -8,7 +8,6 @@
 import {
   AST,
   type CommandSubstitutionPart,
-  type ProcessSubstitutionPart,
   type ScriptNode,
 } from "../ast/types.js";
 
@@ -256,10 +255,9 @@ function skipHeredocBodies(
 /**
  * Find the index of the `)` that closes a parenthesised substitution body.
  *
- * Shared by `$(...)` command substitution and `<(...)` / `>(...)` process
- * substitution: both open with a two-character prefix followed by an ordinary
- * command list, so the boundary scan (quote tracking, nested parens, heredoc
- * bodies, `case` patterns) is identical.
+ * Used for `$(...)` command substitution embedded in a word, where the lexer
+ * cannot expose the body as ordinary grammar tokens. Process substitution is
+ * parsed directly from the token stream instead.
  *
  * @param value The string containing the substitution
  * @param cmdStart Index of the first character after the opening `X(`
@@ -434,38 +432,6 @@ export function parseCommandSubstitutionFromString(
 
   return {
     part: AST.commandSubstitution(body, false),
-    endIndex: i + 1,
-  };
-}
-
-/**
- * Parse a process substitution starting at the given position.
- * Handles `<(...)` (input) and `>(...)` (output) syntax.
- *
- * @param value The string containing the substitution
- * @param start Position of the `<` or `>` in `<(` / `>(`
- * @param createParser Factory function to create a new parser instance
- * @param error Error reporting function
- * @returns The parsed process substitution part and the ending index
- */
-export function parseProcessSubstitutionFromString(
-  value: string,
-  start: number,
-  createParser: ParserFactory,
-  error: ErrorFn,
-): { part: ProcessSubstitutionPart; endIndex: number } {
-  const direction = value[start] === "<" ? "input" : "output";
-  // Skip `<(` / `>(`
-  const cmdStart = start + 2;
-  const i = findSubstitutionBodyEnd(value, cmdStart, error);
-
-  const cmdStr = value.slice(cmdStart, i);
-  // Use a new Parser instance to avoid overwriting the caller's parser's tokens
-  const nestedParser = createParser();
-  const body = nestedParser.parse(cmdStr);
-
-  return {
-    part: AST.processSubstitution(body, direction),
     endIndex: i + 1,
   };
 }
