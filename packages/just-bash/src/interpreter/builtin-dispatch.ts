@@ -571,7 +571,17 @@ export async function dispatchBuiltin(
     const [cmd, ...rest] = args;
     // Re-dispatch with the same stdin, so the wrapped command inherits fd-0
     // ownership too (`exec cmd < empty-file` is EOF, not "no redirection").
-    return runCommand(cmd, rest, [], stdin, false, false, -1, stdinRedirected);
+    const result = await runCommand(
+      cmd,
+      rest,
+      [],
+      stdin,
+      false,
+      false,
+      -1,
+      stdinRedirected,
+    );
+    return { ...result, internalProducerOmitsShellPrefix: true };
   }
   if (commandName === "wait") {
     // wait - wait for background jobs (stub: no-op in this context)

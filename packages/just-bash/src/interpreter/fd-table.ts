@@ -165,6 +165,13 @@ function aliasGroup(
   return ctx.state.fdAliases?.get(fd);
 }
 
+export function getFdAliasMembers(
+  ctx: InterpreterContext,
+  fd: number,
+): number[] {
+  return [...(aliasGroup(ctx, fd) ?? [fd])];
+}
+
 /** Drop `fd` from its alias group; the last remaining member stops aliasing. */
 function leaveAliasGroup(ctx: InterpreterContext, fd: number): void {
   const group = aliasGroup(ctx, fd);
@@ -275,6 +282,25 @@ export function dupFd(
   return true;
 }
 
+export function moveFd(
+  ctx: InterpreterContext,
+  fd: number,
+  sourceFd: number,
+): boolean {
+  const raw = getRawFd(ctx, sourceFd);
+  if (raw === undefined) return false;
+  if (fd === sourceFd) return true;
+  const isInput = ctx.state.inputFds?.has(sourceFd) === true;
+  const aliases = [...(aliasGroup(ctx, sourceFd) ?? [])].filter(
+    (member) => member !== sourceFd,
+  );
+  closeFd(ctx, sourceFd);
+  setRawFd(ctx, fd, raw, isInput);
+  const survivor = aliases.find((member) => isFdOpen(ctx, member));
+  if (survivor !== undefined) joinAliasGroup(ctx, fd, survivor);
+  return true;
+}
+
 /**
  * Readable bytes remaining on `fd`.
  * Returns a reason instead of content when the fd cannot be read from, so
@@ -329,6 +355,36 @@ export function advanceFd(
   for (const member of aliasGroup(ctx, fd) ?? [fd]) {
     writeRawFd(ctx, member, raw, isInput);
   }
+}
+
+export async function writeFdEntry(
+  ctx: InterpreterContext,
+  entry: FdEntry,
+  descriptors: number[],
+  content: string,
+  encoding: "binary" | "utf8",
+): Promise<boolean> {
+  if (entry.kind === "output") {
+    await ctx.fs.appendFile(entry.path, content, encoding);
+    return true;
+  }
+  if (entry.kind !== "readwrite") return false;
+
+  const updatedContent =
+    entry.content.slice(0, entry.position) +
+    content +
+    entry.content.slice(entry.position + content.length);
+  const updated: FdEntry = {
+    ...entry,
+    position: entry.position + content.length,
+    content: updatedContent,
+  };
+  await ctx.fs.writeFile(entry.path, updatedContent, encoding);
+  const raw = encodeFdEntry(updated);
+  for (const fd of descriptors) {
+    if (isFdOpen(ctx, fd)) writeRawFd(ctx, fd, raw, false);
+  }
+  return true;
 }
 
 /**
