@@ -542,13 +542,12 @@ export class Parser {
     ) {
       this.advance();
       timePosix = true;
-    }
-    if (
-      this.check(TokenType.WORD, TokenType.NAME) &&
-      this.current().value === "--"
-    ) {
-      this.advance();
-      timePosix = true;
+      if (
+        this.check(TokenType.WORD, TokenType.NAME) &&
+        this.current().value === "--"
+      ) {
+        this.advance();
+      }
     }
     return timePosix;
   }

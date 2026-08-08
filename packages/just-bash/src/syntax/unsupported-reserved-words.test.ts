@@ -80,13 +80,29 @@ describe("unsupported reserved words", () => {
 
   it.each([
     ["time time true", false],
-    ["time -- true", true],
     ["time -p -- true", true],
   ] as const)("recognizes timing prefixes in %s", (source, timePosix) => {
     const pipeline = parse(source).statements[0].pipelines[0];
 
     expect(pipeline.timed).toBe(true);
     expect(pipeline.timePosix).toBe(timePosix);
+  });
+
+  it("treats bare -- as the command after time", () => {
+    const pipeline = parse("time -- select").statements[0].pipelines[0];
+
+    expect(pipeline.timed).toBe(true);
+    expect(pipeline.commands[0]).toMatchObject({
+      type: "SimpleCommand",
+      name: {
+        parts: [{ type: "Literal", value: "--" }],
+      },
+      args: [
+        {
+          parts: [{ type: "Literal", value: "select" }],
+        },
+      ],
+    });
   });
 
   it("rejects unsupported syntax after recursive timing prefixes", async () => {
