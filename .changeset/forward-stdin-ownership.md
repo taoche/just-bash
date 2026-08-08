@@ -2,4 +2,4 @@
 "just-bash": patch
 ---
 
-Forward stdin ownership through command dispatch so subshell and group execution receive the ownership state selected by their caller.
+Restore command groups and subshells after the process-substitution and stdin-ownership changes were combined without forwarding ownership through inner command dispatch.
