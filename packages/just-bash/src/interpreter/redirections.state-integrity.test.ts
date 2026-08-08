@@ -2,6 +2,72 @@ import { describe, expect, it } from "vitest";
 import { Bash } from "../Bash.js";
 
 describe("redirection state integrity", () => {
+  it("scopes a bare descriptor variable and reuses fd 10", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      '{output}>/output.log; : {named}>/named.log; printf "[%s]:%s" "$output" "$named"',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("[]:10");
+    expect(await env.readFile("/output.log")).toBe("");
+    expect(await env.readFile("/named.log")).toBe("");
+  });
+
+  it("expands a bare descriptor-variable target exactly once", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      'i=0; {output}>"/out$((i++))"; printf "%s:[%s]" "$i" "$output"',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("1:[]");
+    expect(await env.readFile("/out0")).toBe("");
+    await expect(env.readFile("/out1")).rejects.toThrow();
+  });
+
+  it("expands a named command descriptor-variable target exactly once", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      'i=0; : {output}>"/out$((i++))"; printf "file" >&$output; printf "%s" "$i"',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("1");
+    expect(await env.readFile("/out0")).toBe("file");
+    await expect(env.readFile("/out1")).rejects.toThrow();
+  });
+
+  it("opens a bare descriptor-variable target once under noclobber", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      'set -C; {output}>/output.log; printf "[%s]" "$output"',
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("[]");
+    expect(await env.readFile("/output.log")).toBe("");
+  });
+
+  it("does not mutate state or truncate on bare readonly failure", async () => {
+    const env = new Bash({
+      env: { output: "9" },
+      files: { "/existing": "preserve\n" },
+    });
+    await env.exec("readonly output");
+    const result = await env.exec("{output}>|/existing");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("readonly variable");
+    expect(await env.readFile("/existing")).toBe("preserve\n");
+
+    const state = await env.exec(
+      ': {next}>/next; printf "%s:%s" "$output" "$next"',
+    );
+    expect(state.exitCode).toBe(0);
+    expect(state.stderr).toBe("");
+    expect(state.stdout).toBe("9:10");
+  });
+
   it("applies noclobber to descriptor-variable output redirects", async () => {
     const env = new Bash({ files: { "/existing": "preserve\n" } });
     const result = await env.exec("set -C; exec {fd}>/existing");
@@ -38,7 +104,7 @@ describe("redirection state integrity", () => {
     await expect(env.readFile("/out1")).rejects.toThrow();
   });
 
-  it("validates every compound redirect before truncating any target", async () => {
+  it("preserves an earlier compound redirect before a later failure", async () => {
     const env = new Bash({ files: { "/first": "preserve\n" } });
     await env.exec("mkdir /directory");
     const result = await env.exec(
@@ -46,6 +112,6 @@ describe("redirection state integrity", () => {
     );
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Is a directory");
-    expect(await env.readFile("/first")).toBe("preserve\n");
+    expect(await env.readFile("/first")).toBe("");
   });
 });

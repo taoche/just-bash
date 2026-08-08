@@ -72,6 +72,7 @@ export function parseRedirection(p: Parser): RedirectionNode {
       p,
       operator,
       fd,
+      fdVariable,
       opToken.type === TokenType.DLESSDASH,
     );
   }
@@ -89,6 +90,7 @@ function parseHeredocStart(
   p: Parser,
   _operator: RedirectionOperator,
   fd: number | null,
+  fdVariable: string | undefined,
   stripTabs: boolean,
 ): RedirectionNode {
   // Parse delimiter
@@ -112,6 +114,7 @@ function parseHeredocStart(
     stripTabs ? "<<-" : "<<", // Use proper here-doc operator
     AST.hereDoc(delimiter, AST.word([]), stripTabs, quoted),
     fd,
+    fdVariable,
   );
 
   // Register pending here-document

@@ -344,20 +344,8 @@ export class Parser {
       t === TokenType.TIME ||
       // 'in' can appear as a command name (e.g., 'in' is not reserved outside for/case)
       t === TokenType.IN ||
-      // Redirections can appear before command name (e.g., <<EOF tac)
-      // POSIX allows simple_command to start with io_redirect
-      t === TokenType.LESS ||
-      t === TokenType.GREAT ||
-      t === TokenType.DLESS ||
-      t === TokenType.DGREAT ||
-      t === TokenType.LESSAND ||
-      t === TokenType.GREATAND ||
-      t === TokenType.LESSGREAT ||
-      t === TokenType.DLESSDASH ||
-      t === TokenType.CLOBBER ||
-      t === TokenType.TLESS ||
-      t === TokenType.AND_GREAT ||
-      t === TokenType.AND_DGREAT
+      // POSIX allows simple_command to start with io_redirect.
+      CmdParser.isRedirection(this)
     );
   }
 
