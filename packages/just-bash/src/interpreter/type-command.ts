@@ -15,9 +15,9 @@ import type {
   PipelineNode,
   SimpleCommandNode,
   StatementNode,
-  WordNode,
 } from "../ast/types.js";
 import type { IFileSystem } from "../fs/interface.js";
+import { serializeWord } from "../transform/serialize.js";
 import type { CommandRegistry, ExecResult } from "../types.js";
 import { result } from "./helpers/result.js";
 import { SHELL_BUILTINS, SHELL_KEYWORDS } from "./helpers/shell-constants.js";
@@ -353,35 +353,6 @@ function serializeCompoundCommand(
 function serializePipeline(pipeline: PipelineNode): string {
   const parts = pipeline.commands.map((cmd) => serializeCompoundCommand(cmd));
   return (pipeline.negated ? "! " : "") + parts.join(" | ");
-}
-
-function serializeWord(word: WordNode): string {
-  // Simple serialization - just concatenate parts
-  let result = "";
-  for (const part of word.parts) {
-    if (part.type === "Literal") {
-      result += part.value;
-    } else if (part.type === "DoubleQuoted") {
-      result += `"${part.parts.map((p) => serializeWordPart(p)).join("")}"`;
-    } else if (part.type === "SingleQuoted") {
-      result += `'${part.value}'`;
-    } else {
-      result += serializeWordPart(part);
-    }
-  }
-  return result;
-}
-
-function serializeWordPart(part: unknown): string {
-  const p = part as { type: string; value?: string; name?: string };
-  if (p.type === "Literal") {
-    return p.value ?? "";
-  }
-  if (p.type === "Variable") {
-    return `$${p.name}`;
-  }
-  // For other part types, return empty or placeholder
-  return "";
 }
 
 /**
