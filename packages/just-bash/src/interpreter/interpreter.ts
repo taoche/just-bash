@@ -943,12 +943,14 @@ export class Interpreter {
       }
     }
 
-    // A command fed from `<&N` has drained that descriptor: reading is
-    // consuming, so the next reader of N continues after what this command
-    // took. `read` is the exception — it reports exactly how far it got and
-    // advances N itself (see the read builtin's consumeInput).
+    // Commands that do not report a count retain the historical full-drain
+    // behavior. `read` advances its source exactly in consumeInput.
     if (stdinSourceFd >= 0 && commandName !== "read") {
-      advanceFd(this.ctx, stdinSourceFd, stdin.length);
+      advanceFd(
+        this.ctx,
+        stdinSourceFd,
+        cmdResult.internalStdinConsumed ?? stdin.length,
+      );
     }
 
     // Prepend xtrace output and any assignment warnings to stderr
