@@ -556,7 +556,7 @@ export class Interpreter {
     const procSubMark = markProcessSubstitutions(this.ctx);
     let result: ExecResult;
     try {
-      result = await this.executeCommandInner(node, stdin);
+      result = await this.executeCommandInner(node, stdin, stdinOwned);
     } catch (error) {
       await releaseProcessSubstitutions(this.ctx, procSubMark).catch(
         () => undefined,
@@ -580,6 +580,7 @@ export class Interpreter {
   private async executeCommandInner(
     node: CommandNode,
     stdin: string,
+    stdinOwned: boolean,
   ): Promise<ExecResult> {
     this.assertDefenseContext("command");
 
