@@ -434,7 +434,8 @@ async function prepareRedirectionsWithState(
   ): PreparedDupSource | null => {
     if (sourceFd < FIRST_USER_FD) {
       const entry = standardRoutes.get(sourceFd);
-      return entry && entry.kind !== "closed"
+      if (entry?.kind === "closed") return null;
+      return entry
         ? {
             kind: "entry",
             entry,

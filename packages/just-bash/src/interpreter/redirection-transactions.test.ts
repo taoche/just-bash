@@ -79,6 +79,15 @@ describe("redirection transactions", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("rejects duplication from a persistent closed stdout", async () => {
+    const env = new Bash();
+    const result = await env.exec("exec 1>&-; : 3>&1; echo rc=$? >&2");
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("bash: 1: Bad file descriptor\nrc=1\n");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("aborts when a redirection exceeds the descriptor limit", async () => {
     const env = new Bash({ executionLimits: { maxFileDescriptors: 1 } });
     const result = await env.exec(
