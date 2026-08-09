@@ -20,6 +20,10 @@ import type { Parser } from "./parser.js";
 // PURE STRING UTILITIES
 // =============================================================================
 
+/** Lexer-level escapes in raw arithmetic subscripts need quote removal. */
+export const quoteRemoveEscapes = (value: string): string =>
+  value.replace(/\\(.)/g, "$1");
+
 /**
  * Decode a byte array as UTF-8 with error recovery.
  * Valid UTF-8 sequences are decoded to their Unicode characters.

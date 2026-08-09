@@ -42,4 +42,26 @@ describe("escaped words", () => {
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
+
+  it("quote-removes escaped array subscripts", async () => {
+    const result = await new Bash().exec(
+      'q=1; a[\\q]=x; printf "%s:%s" "${a[\\q]}" "${a[q]}"',
+    );
+
+    expect(result.stdout).toBe("x:x");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("does not over-escape literals in function descriptions", async () => {
+    const result = await new Bash().exec(
+      "function f { echo foo#bar mid!word pre~post; }; type f",
+    );
+
+    expect(result.stdout).toBe(
+      "f is a function\nf () \n{ \n    echo foo#bar mid!word pre~post\n}\n",
+    );
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
 });

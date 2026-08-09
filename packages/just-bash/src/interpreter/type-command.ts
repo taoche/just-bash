@@ -8,13 +8,16 @@
  * Also includes helpers for function source serialization.
  */
 
-import type {
-  CommandNode,
-  FunctionDefNode,
-  GroupNode,
-  PipelineNode,
-  SimpleCommandNode,
-  StatementNode,
+import {
+  AST,
+  type CommandNode,
+  type FunctionDefNode,
+  type GroupNode,
+  type PipelineNode,
+  type SimpleCommandNode,
+  type StatementNode,
+  type WordNode,
+  type WordPart,
 } from "../ast/types.js";
 import type { IFileSystem } from "../fs/interface.js";
 import { serializeWord } from "../transform/serialize.js";
@@ -332,10 +335,10 @@ function serializeCompoundCommand(
     const cmd = node as SimpleCommandNode;
     const parts: string[] = [];
     if (cmd.name) {
-      parts.push(serializeWord(cmd.name));
+      parts.push(serializeFunctionWord(cmd.name));
     }
     for (const arg of cmd.args) {
-      parts.push(serializeWord(arg));
+      parts.push(serializeFunctionWord(arg));
     }
     return parts.join(" ");
   }
@@ -348,6 +351,25 @@ function serializeCompoundCommand(
 
   // For other compound commands, return a placeholder
   return "...";
+}
+
+function serializeFunctionWord(word: WordNode): string {
+  return word.parts.map(serializeFunctionWordPart).join("");
+}
+
+function serializeFunctionWordPart(part: WordPart): string {
+  switch (part.type) {
+    case "Literal":
+      return part.value;
+    case "Escaped":
+      return `\\${part.value}`;
+    case "SingleQuoted":
+      return `'${part.value}'`;
+    case "DoubleQuoted":
+      return `"${part.parts.map(serializeFunctionWordPart).join("")}"`;
+    default:
+      return serializeWord(AST.word([part]));
+  }
 }
 
 function serializePipeline(pipeline: PipelineNode): string {

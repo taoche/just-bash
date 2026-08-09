@@ -144,7 +144,7 @@ function parseParameterExpansion(
   // Handle array subscript
   if (value[i] === "[") {
     const closeIdx = WordParser.findMatchingBracket(p, value, i, "[", "]");
-    name += value.slice(i, closeIdx + 1);
+    name += `[${WordParser.quoteRemoveEscapes(value.slice(i + 1, closeIdx))}]`;
     i = closeIdx + 1;
 
     // Check for multiple subscripts like ${a[0][0]} - this is invalid syntax
