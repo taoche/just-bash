@@ -132,8 +132,6 @@ export type RedirectionPolicy = "scoped" | "bare" | "persistent";
 
 export const SIMPLE_REDIRECTION_POLICY: RedirectionPolicy = "scoped";
 export const BARE_REDIRECTION_POLICY: RedirectionPolicy = "bare";
-export const COMPOUND_REDIRECTION_POLICY: RedirectionPolicy =
-  SIMPLE_REDIRECTION_POLICY;
 export const EXEC_REDIRECTION_POLICY: RedirectionPolicy = "persistent";
 
 type RedirectionTransactionState = {
@@ -1060,7 +1058,7 @@ export async function withPreparedRedirections(
   const transaction = createRedirectionTransaction(
     ctx,
     redirections,
-    COMPOUND_REDIRECTION_POLICY,
+    SIMPLE_REDIRECTION_POLICY,
   );
   let prepared: PreparedRedirections | undefined;
   try {

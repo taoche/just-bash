@@ -15,11 +15,11 @@ import { OK, result, throwExecutionLimit } from "./helpers/result.js";
 import { POSIX_SPECIAL_BUILTINS } from "./helpers/shell-constants.js";
 import {
   applyRedirections,
-  COMPOUND_REDIRECTION_POLICY,
   createRedirectionTransaction,
   type PreparedRedirections,
   preparedRedirectionError,
   routeControlFlowError,
+  SIMPLE_REDIRECTION_POLICY,
 } from "./redirections.js";
 import type { InterpreterContext } from "./types.js";
 
@@ -184,7 +184,7 @@ export async function callFunction(
   const redirectionTransaction = createRedirectionTransaction(
     ctx,
     func.redirections,
-    COMPOUND_REDIRECTION_POLICY,
+    SIMPLE_REDIRECTION_POLICY,
   );
   try {
     prepared = await redirectionTransaction.prepare(stdin);
