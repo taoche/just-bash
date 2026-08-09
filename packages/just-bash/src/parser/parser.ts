@@ -336,6 +336,7 @@ export class Parser {
       t === TokenType.NAME ||
       t === TokenType.NUMBER ||
       t === TokenType.ASSIGNMENT_WORD ||
+      t === TokenType.FD_VARIABLE ||
       t === TokenType.LPAREN ||
       t === TokenType.LBRACE ||
       t === TokenType.DPAREN_START ||
@@ -549,26 +550,24 @@ export class Parser {
   private parsePipeline(): PipelineNode {
     let timed = false;
     let timePosix = false;
-    let negated = false;
-    if (this.check(TokenType.BANG)) {
+    let negationCount = 0;
+    while (this.check(TokenType.BANG)) {
       this.advance();
-      negated = true;
+      negationCount++;
     }
     // A leading `!` makes `time` the command word rather than a timing prefix.
-    if (!negated) {
+    if (negationCount === 0) {
       const parsedTimePosix = this.parseTimePrefix();
       if (parsedTimePosix !== undefined) {
         timed = true;
         timePosix = parsedTimePosix;
-        if (this.check(TokenType.BANG)) {
+        while (this.check(TokenType.BANG)) {
           this.advance();
-          negated = !negated;
+          negationCount++;
         }
       }
     }
-    if (this.check(TokenType.BANG)) {
-      this.error("syntax error near unexpected token `!'");
-    }
+    const negated = negationCount % 2 === 1;
 
     const commands: CommandNode[] = [];
     const pipeStderr: boolean[] = [];
@@ -634,6 +633,8 @@ export class Parser {
       // TIME remains an ordinary command after a pipe, where pipeline timing
       // syntax is not recognized.
       case TokenType.TIME:
+      // `in` is reserved only in for and case grammar contexts.
+      case TokenType.IN:
         break;
       case TokenType.BANG:
         this.error(`syntax error near unexpected token \`${token.value}'`);

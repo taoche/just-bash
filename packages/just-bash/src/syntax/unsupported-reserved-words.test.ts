@@ -36,7 +36,7 @@ const commandLeadingContexts = [
 ];
 
 describe("unsupported reserved words", () => {
-  for (const word of ["select", "coproc", "in"]) {
+  for (const word of ["select", "coproc"]) {
     for (const context of commandLeadingContexts) {
       it(`rejects ${word} ${context.name} without executing trailing payloads`, async () => {
         const result = await new Bash().exec(context.script(word));
@@ -49,6 +49,25 @@ describe("unsupported reserved words", () => {
       });
     }
   }
+
+  it("keeps in as a command word outside for and case", () => {
+    const command = parse("\\in").statements[0].pipelines[0].commands[0];
+
+    expect(command).toMatchObject({
+      type: "SimpleCommand",
+      name: { parts: [{ type: "Literal", value: "in" }] },
+    });
+  });
+
+  it("parses a bare descriptor-variable redirection", () => {
+    const command = parse("{fd}>file").statements[0].pipelines[0].commands[0];
+
+    expect(command).toMatchObject({
+      type: "SimpleCommand",
+      name: null,
+      redirections: [{ fdVariable: "fd", operator: ">" }],
+    });
+  });
 
   it("rejects pipeline negation after a pipe", async () => {
     const result = await new Bash().exec(
@@ -129,13 +148,15 @@ describe("unsupported reserved words", () => {
     });
   });
 
-  it.each([
-    "! ! true",
-    "time ! ! true",
-  ])("rejects repeated pipeline negation in %s", (source) => {
-    expect(() => parse(source)).toThrow(
-      "syntax error near unexpected token `!'",
-    );
+  it("preserves repeated pipeline negation", () => {
+    const pipeline = parse("! ! true").statements[0].pipelines[0];
+
+    expect(pipeline.negated).toBe(false);
+    expect(pipeline.timed).toBe(false);
+    expect(pipeline.commands[0]).toMatchObject({
+      type: "SimpleCommand",
+      name: { parts: [{ type: "Literal", value: "true" }] },
+    });
   });
 
   it("preserves reserved words in argument position", async () => {
