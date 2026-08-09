@@ -633,8 +633,6 @@ export class Parser {
       // TIME remains an ordinary command after a pipe, where pipeline timing
       // syntax is not recognized.
       case TokenType.TIME:
-      // `in` is reserved only in for and case grammar contexts.
-      case TokenType.IN:
         break;
       case TokenType.BANG:
         this.error(`syntax error near unexpected token \`${token.value}'`);
