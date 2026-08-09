@@ -64,4 +64,14 @@ describe("escaped words", () => {
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
+
+  it("preserves escaped IFS delimiters in compgen wordlists", async () => {
+    const result = await new Bash().exec(
+      "IFS=':%'; compgen -W 'spam:eggs%ham cheese\\:colon'",
+    );
+
+    expect(result.stdout).toBe("spam\neggs\nham cheese:colon\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
 });
