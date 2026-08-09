@@ -53,6 +53,16 @@ describe("escaped words", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("keeps quoted array subscript escapes distinct", async () => {
+    const result = await new Bash().exec(
+      "q=1; a['\\q']=x; printf '<%s>' \"${a[q]}\"",
+    );
+
+    expect(result.stdout).toBe("<>");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("does not over-escape literals in function descriptions", async () => {
     const result = await new Bash().exec(
       "function f { echo foo#bar mid!word pre~post; }; type f",

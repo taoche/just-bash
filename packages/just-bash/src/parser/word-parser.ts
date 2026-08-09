@@ -20,9 +20,27 @@ import type { Parser } from "./parser.js";
 // PURE STRING UTILITIES
 // =============================================================================
 
-/** Lexer-level escapes in raw arithmetic subscripts need quote removal. */
-export const quoteRemoveEscapes = (value: string): string =>
-  value.replace(/\\(.)/g, "$1");
+/** Lexer-level escapes in unquoted arithmetic subscripts need quote removal. */
+export const quoteRemoveEscapes = (value: string): string => {
+  let quote: "'" | '"' | undefined;
+  let result = "";
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    if (character === "'" || character === '"') {
+      if (quote === character) quote = undefined;
+      else if (!quote) quote = character;
+      result += character;
+      continue;
+    }
+    if (character === "\\" && !quote && index + 1 < value.length) {
+      result += value[index + 1];
+      index += 1;
+      continue;
+    }
+    result += character;
+  }
+  return result;
+};
 
 /**
  * Decode a byte array as UTF-8 with error recovery.
