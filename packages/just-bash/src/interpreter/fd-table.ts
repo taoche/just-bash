@@ -386,7 +386,7 @@ export async function writeFdEntry(
     position: writeEntry.position + content.length,
     content: updatedContent,
   };
-  await ctx.fs.writeFile(entry.path, updatedContent, encoding);
+  await ctx.fs.writeFile(writeEntry.path, updatedContent, encoding);
   const raw = encodeFdEntry(updated);
   for (const fd of descriptors) {
     if (isFdOpen(ctx, fd)) writeRawFd(ctx, fd, raw, false);
