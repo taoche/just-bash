@@ -362,18 +362,23 @@ async function prepareRedirectionsWithState(
     error: ExecResult,
     index: number,
     errorCause?: ExitError | ExecutionLimitError,
-  ): Promise<PreparedRedirections> => ({
-    ...base(),
-    error: await applyRedirections(
-      ctx,
-      error,
-      redirections.slice(0, index),
-      targets,
-      dupSources,
-      standardRoutes,
-    ),
-    ...(errorCause ? { errorCause } : {}),
-  });
+  ): Promise<PreparedRedirections> => {
+    const prepared = {
+      ...base(),
+      error: await applyRedirections(
+        ctx,
+        error,
+        redirections.slice(0, index),
+        targets,
+        dupSources,
+        standardRoutes,
+      ),
+    };
+    if (errorCause) {
+      return { ...prepared, errorCause };
+    }
+    return prepared;
+  };
   const requireCapacity = async (
     fd: number,
     index: number,
