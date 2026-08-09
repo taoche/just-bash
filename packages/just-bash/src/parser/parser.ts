@@ -554,10 +554,8 @@ export class Parser {
       this.advance();
       negated = true;
     }
-    // Bash treats `! time ! command` as `!` followed by an external `time`
-    // command. A timing prefix can only consume the following `!` when it is
-    // not itself preceded by pipeline negation.
-    if (!(negated && this.peek(1).type === TokenType.BANG)) {
+    // A leading `!` makes `time` the command word rather than a timing prefix.
+    if (!negated) {
       const parsedTimePosix = this.parseTimePrefix();
       if (parsedTimePosix !== undefined) {
         timed = true;

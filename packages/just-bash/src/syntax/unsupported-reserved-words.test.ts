@@ -62,12 +62,16 @@ describe("unsupported reserved words", () => {
     expect(result.exitCode).toBe(2);
   });
 
-  it("recognizes timing after pipeline negation", () => {
+  it("keeps time as the command after leading pipeline negation", () => {
     const pipeline = parse("! time true").statements[0].pipelines[0];
 
     expect(pipeline.negated).toBe(true);
-    expect(pipeline.timed).toBe(true);
-    expect(pipeline.timePosix).toBe(false);
+    expect(pipeline.timed).toBe(false);
+    expect(pipeline.commands[0]).toMatchObject({
+      type: "SimpleCommand",
+      name: { parts: [{ type: "Literal", value: "time" }] },
+      args: [{ parts: [{ type: "Literal", value: "true" }] }],
+    });
   });
 
   it("keeps a second time as the timed command", () => {
