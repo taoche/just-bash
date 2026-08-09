@@ -542,12 +542,6 @@ export class Parser {
     ) {
       this.advance();
       timePosix = true;
-      if (
-        this.check(TokenType.WORD, TokenType.NAME) &&
-        this.current().value === "--"
-      ) {
-        this.advance();
-      }
     }
     return timePosix;
   }
@@ -555,22 +549,28 @@ export class Parser {
   private parsePipeline(): PipelineNode {
     let timed = false;
     let timePosix = false;
-    let negationCount = 0;
-    while (true) {
+    let negated = false;
+    if (this.check(TokenType.BANG)) {
+      this.advance();
+      negated = true;
+    }
+    // Bash treats `! time ! command` as `!` followed by an external `time`
+    // command. A timing prefix can only consume the following `!` when it is
+    // not itself preceded by pipeline negation.
+    if (!(negated && this.peek(1).type === TokenType.BANG)) {
       const parsedTimePosix = this.parseTimePrefix();
       if (parsedTimePosix !== undefined) {
         timed = true;
-        timePosix ||= parsedTimePosix;
-        continue;
+        timePosix = parsedTimePosix;
+        if (this.check(TokenType.BANG)) {
+          this.advance();
+          negated = !negated;
+        }
       }
-      if (this.check(TokenType.BANG)) {
-        this.advance();
-        negationCount++;
-        continue;
-      }
-      break;
     }
-    const negated = negationCount % 2 === 1;
+    if (this.check(TokenType.BANG)) {
+      this.error("syntax error near unexpected token `!'");
+    }
 
     const commands: CommandNode[] = [];
     const pipeStderr: boolean[] = [];

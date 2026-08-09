@@ -70,22 +70,27 @@ describe("unsupported reserved words", () => {
     expect(pipeline.timePosix).toBe(false);
   });
 
-  it("recognizes alternating negation and timing prefixes", () => {
-    const pipeline = parse("! time ! true").statements[0].pipelines[0];
+  it("keeps a second time as the timed command", () => {
+    const pipeline = parse("time time true").statements[0].pipelines[0];
 
-    expect(pipeline.negated).toBe(false);
     expect(pipeline.timed).toBe(true);
-    expect(pipeline.timePosix).toBe(false);
+    expect(pipeline.commands[0]).toMatchObject({
+      type: "SimpleCommand",
+      name: { parts: [{ type: "Literal", value: "time" }] },
+      args: [{ parts: [{ type: "Literal", value: "true" }] }],
+    });
   });
 
-  it.each([
-    ["time time true", false],
-    ["time -p -- true", true],
-  ] as const)("recognizes timing prefixes in %s", (source, timePosix) => {
-    const pipeline = parse(source).statements[0].pipelines[0];
+  it("keeps -- as the command after time -p", () => {
+    const pipeline = parse("time -p -- true").statements[0].pipelines[0];
 
     expect(pipeline.timed).toBe(true);
-    expect(pipeline.timePosix).toBe(timePosix);
+    expect(pipeline.timePosix).toBe(true);
+    expect(pipeline.commands[0]).toMatchObject({
+      type: "SimpleCommand",
+      name: { parts: [{ type: "Literal", value: "--" }] },
+      args: [{ parts: [{ type: "Literal", value: "true" }] }],
+    });
   });
 
   it("treats bare -- as the command after time", () => {
@@ -105,16 +110,28 @@ describe("unsupported reserved words", () => {
     });
   });
 
-  it("rejects unsupported syntax after recursive timing prefixes", async () => {
-    const result = await new Bash().exec(
-      "! time time ! select; echo trailing-payload",
-    );
+  it("keeps time as a command after leading negation and an inner !", () => {
+    const pipeline = parse("! time ! false").statements[0].pipelines[0];
 
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(
-      "bash: syntax error: Parse error at 1:15: syntax error near unexpected token `select'\n",
+    expect(pipeline.negated).toBe(true);
+    expect(pipeline.timed).toBe(false);
+    expect(pipeline.commands[0]).toMatchObject({
+      type: "SimpleCommand",
+      name: { parts: [{ type: "Literal", value: "time" }] },
+      args: [
+        { parts: [{ type: "Literal", value: "!" }] },
+        { parts: [{ type: "Literal", value: "false" }] },
+      ],
+    });
+  });
+
+  it.each([
+    "! ! true",
+    "time ! ! true",
+  ])("rejects repeated pipeline negation in %s", (source) => {
+    expect(() => parse(source)).toThrow(
+      "syntax error near unexpected token `!'",
     );
-    expect(result.exitCode).toBe(2);
   });
 
   it("preserves reserved words in argument position", async () => {
