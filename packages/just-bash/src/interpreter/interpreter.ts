@@ -943,14 +943,10 @@ export class Interpreter {
       }
     }
 
-    // Commands that do not report a count retain the historical full-drain
-    // behavior. `read` advances its source exactly in consumeInput.
+    // Commands without stdin access leave descriptor input untouched. `read`
+    // advances its source exactly in consumeInput.
     if (stdinSourceFd >= 0 && commandName !== "read") {
-      advanceFd(
-        this.ctx,
-        stdinSourceFd,
-        cmdResult.internalStdinConsumed ?? stdin.length,
-      );
+      advanceFd(this.ctx, stdinSourceFd, cmdResult.internalStdinConsumed ?? 0);
     }
 
     // Prepend xtrace output and any assignment warnings to stderr

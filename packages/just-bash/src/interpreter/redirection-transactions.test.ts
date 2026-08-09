@@ -57,6 +57,17 @@ describe("redirection transactions", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("does not drain persistent fd 0 for external non-readers", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\nb\n' >/tmp/in; exec </tmp/in; pwd >/dev/null; read x; read y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("shares a persistent standard input alias with its source descriptor", async () => {
     const env = new Bash();
     const result = await env.exec(

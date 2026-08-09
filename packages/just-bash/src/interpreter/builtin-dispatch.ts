@@ -271,32 +271,58 @@ function createRevocableCommandContext(
     }) as T;
   };
 
-  return {
-    context: {
-      ...context,
-      fs: wrapCapability(context.fs),
-      env: wrapCapability(context.env),
-      limits: Object.freeze({ ...context.limits }),
-      exportedEnv: context.exportedEnv
+  const dataDescriptor = (value: unknown): PropertyDescriptor => ({
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+
+  const descriptors = Object.getOwnPropertyDescriptors(context);
+  Object.assign(descriptors, {
+    fs: dataDescriptor(wrapCapability(context.fs)),
+    env: dataDescriptor(wrapCapability(context.env)),
+    limits: dataDescriptor(Object.freeze({ ...context.limits })),
+    exportedEnv: dataDescriptor(
+      context.exportedEnv
         ? Object.freeze({ ...context.exportedEnv })
         : undefined,
-      executionScope: context.executionScope
+    ),
+    executionScope: dataDescriptor(
+      context.executionScope
         ? wrapCapability(context.executionScope)
         : undefined,
-      fileDescriptors: context.fileDescriptors
+    ),
+    fileDescriptors: dataDescriptor(
+      context.fileDescriptors
         ? wrapCapability(context.fileDescriptors)
         : undefined,
-      coverage: context.coverage ? wrapCapability(context.coverage) : undefined,
-      assignShellVariable: wrapFunction(context.assignShellVariable),
-      exec: wrapFunction(context.exec),
-      execWithInheritedStdin: wrapFunction(context.execWithInheritedStdin),
-      fetch: wrapFunction(context.fetch),
-      getRegisteredCommands: wrapFunction(context.getRegisteredCommands),
-      sleep: wrapFunction(context.sleep),
-      trace: wrapFunction(context.trace),
-      invokeTool: wrapFunction(context.invokeTool),
-      signal: facadeAbort?.signal,
-    },
+    ),
+    coverage: dataDescriptor(
+      context.coverage ? wrapCapability(context.coverage) : undefined,
+    ),
+    assignShellVariable: dataDescriptor(
+      wrapFunction(context.assignShellVariable),
+    ),
+    exec: dataDescriptor(wrapFunction(context.exec)),
+    execWithInheritedStdin: dataDescriptor(
+      wrapFunction(context.execWithInheritedStdin),
+    ),
+    fetch: dataDescriptor(wrapFunction(context.fetch)),
+    getRegisteredCommands: dataDescriptor(
+      wrapFunction(context.getRegisteredCommands),
+    ),
+    sleep: dataDescriptor(wrapFunction(context.sleep)),
+    trace: dataDescriptor(wrapFunction(context.trace)),
+    invokeTool: dataDescriptor(wrapFunction(context.invokeTool)),
+    signal: dataDescriptor(facadeAbort?.signal),
+  });
+
+  return {
+    context: Object.defineProperties(
+      Object.create(Object.getPrototypeOf(context)),
+      descriptors,
+    ) as RuntimeCommandContext,
     revoke() {
       active = false;
       if (!facadeAbort?.signal.aborted) {
