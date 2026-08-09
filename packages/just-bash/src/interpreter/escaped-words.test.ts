@@ -73,6 +73,16 @@ describe("escaped words", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("keeps escaped quotes inside double-quoted array subscripts", async () => {
+    const result = await new Bash().exec(
+      'declare -A a; a["a\\"b\\q"]=ok; declare -p a',
+    );
+
+    expect(result.stdout).toBe("declare -A a=(['a\"b\\q']=ok)\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("does not over-escape literals in function descriptions", async () => {
     const result = await new Bash().exec(
       "function f { echo foo#bar mid!word pre~post; }; type f",

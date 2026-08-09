@@ -26,6 +26,11 @@ export const quoteRemoveEscapes = (value: string): string => {
   let result = "";
   for (let index = 0; index < value.length; index++) {
     const character = value[index];
+    if (character === "\\" && quote === '"' && index + 1 < value.length) {
+      result += character + value[index + 1];
+      index += 1;
+      continue;
+    }
     if (character === "'" || character === '"') {
       if (quote === character) quote = undefined;
       else if (!quote) quote = character;
