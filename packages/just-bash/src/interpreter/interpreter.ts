@@ -609,7 +609,7 @@ export class Interpreter {
         transaction = created;
       });
     } catch (error) {
-      transaction?.finish("throw");
+      transaction?.finish();
       if (error instanceof GlobError) {
         // GlobError from failglob should return exit code 1 with error message
         return failure(error.stderr);
@@ -692,13 +692,13 @@ export class Interpreter {
         if (preparedRedirections.error) {
           restoreTempAssignments();
           if (!preparedRedirections.errorCause) {
-            transaction.finish("success");
+            transaction.finish();
             return preparedRedirections.error;
           }
           try {
             return preparedRedirectionError(preparedRedirections);
           } finally {
-            transaction.finish("throw");
+            transaction.finish();
           }
         }
         const baseResult = result("", xtraceAssignmentOutput, 0);
@@ -710,7 +710,7 @@ export class Interpreter {
           preparedRedirections.dupSources,
           preparedRedirections.standardRoutes,
         );
-        transaction.finish("success");
+        transaction.finish();
         return redirected;
       }
 
@@ -849,7 +849,7 @@ export class Interpreter {
     if (preparedRedirections.error) {
       restoreTempAssignments();
       if (!preparedRedirections.errorCause) {
-        transaction.finish("success");
+        transaction.finish();
         return preparedRedirections.error;
       }
       return preparedRedirectionError(preparedRedirections);
@@ -872,11 +872,11 @@ export class Interpreter {
       if (commandIsOnlyExpansions) {
         // No args - treat as no-op (status 0)
         // Preserve lastExitCode for command subs like $(exit 42)
-        transaction.finish("success");
+        transaction.finish();
         return result("", "", this.ctx.state.lastExitCode);
       }
       // Literal empty command name - command not found
-      transaction.finish("success");
+      transaction.finish();
       return failure("bash: : command not found\n", 127);
     }
 
@@ -896,7 +896,7 @@ export class Interpreter {
           this.ctx.state.tempExportedVars.delete(name);
         }
       }
-      transaction.finish("success");
+      transaction.finish();
       return OK;
     }
 
@@ -970,7 +970,7 @@ export class Interpreter {
       cmdResult.internalProducerCommand ?? commandName,
       cmdResult.internalProducerOmitsShellPrefix,
     );
-    transaction.finish("success");
+    transaction.finish();
 
     // If we caught a break/continue error, re-throw it after applying redirections
     if (controlFlowError) {

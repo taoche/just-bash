@@ -220,7 +220,7 @@ export async function callFunction(
     }
     throw error;
   } finally {
-    redirectionTransaction.finish("success");
+    redirectionTransaction.finish();
     cleanup();
   }
 }

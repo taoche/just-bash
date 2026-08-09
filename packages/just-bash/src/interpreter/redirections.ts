@@ -128,35 +128,13 @@ export type PreparedRedirections = {
   errorCause?: ExitError | ExecutionLimitError;
 };
 
-export type RedirectionPolicy = {
-  numeric: "temporary" | "persistent";
-  fdVariables: "temporary" | "persistent" | "rollback-on-throw";
-  standard: "temporary" | "persistent";
-};
+export type RedirectionPolicy = "scoped" | "bare" | "persistent";
 
-export const SIMPLE_REDIRECTION_POLICY: RedirectionPolicy = {
-  numeric: "temporary",
-  fdVariables: "persistent",
-  standard: "temporary",
-};
-
-export const BARE_REDIRECTION_POLICY: RedirectionPolicy = {
-  numeric: "temporary",
-  fdVariables: "temporary",
-  standard: "temporary",
-};
-
-export const COMPOUND_REDIRECTION_POLICY: RedirectionPolicy = {
-  numeric: "temporary",
-  fdVariables: "persistent",
-  standard: "temporary",
-};
-
-export const EXEC_REDIRECTION_POLICY: RedirectionPolicy = {
-  numeric: "persistent",
-  fdVariables: "persistent",
-  standard: "persistent",
-};
+export const SIMPLE_REDIRECTION_POLICY: RedirectionPolicy = "scoped";
+export const BARE_REDIRECTION_POLICY: RedirectionPolicy = "bare";
+export const COMPOUND_REDIRECTION_POLICY: RedirectionPolicy =
+  SIMPLE_REDIRECTION_POLICY;
+export const EXEC_REDIRECTION_POLICY: RedirectionPolicy = "persistent";
 
 type RedirectionTransactionState = {
   numericSnapshot: FdSnapshot;
@@ -170,7 +148,7 @@ type RedirectionTransactionState = {
 
 export type RedirectionTransaction = {
   prepare: (inheritedStdin?: string) => Promise<PreparedRedirections>;
-  finish: (outcome: "success" | "throw") => void;
+  finish: () => void;
 };
 
 const fdLimitError = (ctx: InterpreterContext): ExecutionLimitError =>
@@ -407,7 +385,7 @@ async function prepareRedirectionsWithState(
   const persistStandard = (fd: number | null, entry: FdEntry): void => {
     if (fd !== null && fd < FIRST_USER_FD) standardRoutes.set(fd, entry);
     if (
-      transaction.policy.standard === "persistent" &&
+      transaction.policy === "persistent" &&
       fd !== null &&
       fd < FIRST_USER_FD
     ) {
@@ -486,7 +464,7 @@ async function prepareRedirectionsWithState(
         persistStandard(effectiveFd, { kind: "input", content: stdin });
       } else {
         const entry: FdEntry = { kind: "input", content };
-        if (transaction.policy.standard === "persistent") {
+        if (transaction.policy === "persistent") {
           persistStandard(effectiveFd, entry);
         } else {
           bindTemporaryStandard(effectiveFd, entry);
@@ -806,7 +784,7 @@ async function prepareRedirectionsWithState(
         }
         if (effectiveFd !== null && effectiveFd < FIRST_USER_FD) {
           standardRoutes.set(effectiveFd, { kind: "closed" });
-          if (transaction.policy.standard === "persistent") {
+          if (transaction.policy === "persistent") {
             closeFd(ctx, effectiveFd);
             ctx.state.closedStandardFds ??= new Set();
             ctx.state.closedStandardFds.add(effectiveFd);
@@ -851,7 +829,7 @@ async function prepareRedirectionsWithState(
       dupSources.set(index, source);
       if (
         source.kind === "entry" &&
-        transaction.policy.standard === "persistent" &&
+        transaction.policy === "persistent" &&
         effectiveFd !== null &&
         effectiveFd < FIRST_USER_FD &&
         parsed.sourceFd >= FIRST_USER_FD
@@ -918,7 +896,7 @@ async function prepareRedirectionsWithState(
           closeFd(ctx, parsed.sourceFd);
         } else {
           standardRoutes.set(parsed.sourceFd, { kind: "closed" });
-          if (transaction.policy.standard === "persistent") {
+          if (transaction.policy === "persistent") {
             closeFd(ctx, parsed.sourceFd);
             ctx.state.closedStandardFds ??= new Set();
             ctx.state.closedStandardFds.add(parsed.sourceFd);
@@ -1002,13 +980,13 @@ export function createRedirectionTransaction(
   return {
     prepare: (inheritedStdin = "") =>
       prepareRedirectionsWithState(ctx, redirections, inheritedStdin, state),
-    finish: (outcome) => {
+    finish: () => {
       if (finished) return;
       finished = true;
-      if (policy.numeric === "temporary") {
+      if (policy !== "persistent") {
         restoreFds(ctx, state.numericSnapshot);
       }
-      if (policy.standard === "temporary") {
+      if (policy !== "persistent") {
         restoreFds(ctx, state.standardSnapshot);
         for (const [fd, wasClosed] of state.standardClosedSnapshot) {
           if (wasClosed) {
@@ -1019,10 +997,7 @@ export function createRedirectionTransaction(
           }
         }
       }
-      if (
-        policy.fdVariables === "temporary" ||
-        (outcome === "throw" && policy.fdVariables === "rollback-on-throw")
-      ) {
+      if (policy === "bare") {
         restoreFds(ctx, state.fdVariableSnapshot);
         for (const [name, value] of state.fdVariableEnv) {
           if (value === undefined) ctx.state.env.delete(name);
@@ -1118,7 +1093,7 @@ export async function withPreparedRedirections(
     await routeControlFlowError(ctx, error, redirections, prepared);
     throw error;
   } finally {
-    transaction.finish("success");
+    transaction.finish();
   }
 }
 
