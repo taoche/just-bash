@@ -46,6 +46,17 @@ describe("redirection transactions", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("shares a persistent standard input alias with its source descriptor", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'ab' >/tmp/in; exec 3</tmp/in; exec 0<&3; read -n1 a; read -n1 -u3 b; printf '%s:%s' \"$a\" \"$b\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("reads temporary fd 0 duplications from their prepared route", async () => {
     const env = new Bash();
     const result = await env.exec("printf value >/tmp/in; cat </tmp/in <&0");
@@ -62,6 +73,28 @@ describe("redirection transactions", () => {
     );
 
     expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("advances a group command's descriptor input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec 3</tmp/in; { read x; } <&3; read -u3 y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("advances a subshell's descriptor input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec 3</tmp/in; (read x) <&3; read -u3 y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe(":b");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
@@ -85,6 +118,17 @@ describe("redirection transactions", () => {
 
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("bash: 1: Bad file descriptor\nrc=1\n");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("closes a standard descriptor moved by persistent exec", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "exec 3>&1; exec 1>&2-; printf err >&2; printf rc=$? >&3",
+    );
+
+    expect(result.stdout).toBe("rc=1");
+    expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
 

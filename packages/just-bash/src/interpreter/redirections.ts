@@ -31,7 +31,6 @@ import {
   hasQuotedMultiValueAt,
 } from "./expansion.js";
 import {
-  advanceFd,
   closeFd,
   dupFd,
   type FdEntry,
@@ -850,7 +849,29 @@ async function prepareRedirectionsWithState(
         );
       }
       dupSources.set(index, source);
-      if (source.kind === "standard") {
+      if (
+        source.kind === "entry" &&
+        transaction.policy.standard === "persistent" &&
+        effectiveFd !== null &&
+        effectiveFd < FIRST_USER_FD &&
+        parsed.sourceFd >= FIRST_USER_FD
+      ) {
+        if (!dupFd(ctx, effectiveFd, parsed.sourceFd)) {
+          return fail(
+            makeResult(
+              "",
+              `bash: ${parsed.sourceFd}: Bad file descriptor\n`,
+              1,
+            ),
+            index,
+          );
+        }
+        standardRoutes.set(
+          effectiveFd,
+          getFdEntry(ctx, effectiveFd) as FdEntry,
+        );
+        ctx.state.closedStandardFds?.delete(effectiveFd);
+      } else if (source.kind === "standard") {
         persistStandard(effectiveFd, {
           kind: redir.operator === "<&" ? "dup-in" : "dup-out",
           sourceFd: source.fd,
@@ -892,8 +913,17 @@ async function prepareRedirectionsWithState(
           stdinSourceFd = -1;
         }
       }
-      if (parsed.move && parsed.sourceFd >= FIRST_USER_FD) {
-        closeFd(ctx, parsed.sourceFd);
+      if (parsed.move) {
+        if (parsed.sourceFd >= FIRST_USER_FD) {
+          closeFd(ctx, parsed.sourceFd);
+        } else {
+          standardRoutes.set(parsed.sourceFd, { kind: "closed" });
+          if (transaction.policy.standard === "persistent") {
+            closeFd(ctx, parsed.sourceFd);
+            ctx.state.closedStandardFds ??= new Set();
+            ctx.state.closedStandardFds.add(parsed.sourceFd);
+          }
+        }
       }
       continue;
     }
@@ -1062,7 +1092,11 @@ export async function withPreparedRedirections(
     prepared = await transaction.prepare(inheritedStdin);
     if (prepared.error) return preparedRedirectionError(prepared);
     const savedGroupStdin = ctx.state.groupStdin;
-    if (prepared.stdin !== undefined) ctx.state.groupStdin = prepared.stdin;
+    const savedGroupStdinSourceFd = ctx.state.groupStdinSourceFd;
+    if (prepared.stdin !== undefined) {
+      ctx.state.groupStdin = prepared.stdin;
+      ctx.state.groupStdinSourceFd = prepared.stdinSourceFd;
+    }
     try {
       const result = await run(prepared);
       return await applyRedirections(
@@ -1074,15 +1108,10 @@ export async function withPreparedRedirections(
         prepared.standardRoutes,
       );
     } finally {
-      if (prepared.stdinSourceFd >= 0 && prepared.stdin !== undefined) {
-        const remaining = ctx.state.groupStdin ?? prepared.stdin;
-        advanceFd(
-          ctx,
-          prepared.stdinSourceFd,
-          prepared.stdin.length - remaining.length,
-        );
+      if (prepared.stdin !== undefined) {
+        ctx.state.groupStdin = savedGroupStdin;
+        ctx.state.groupStdinSourceFd = savedGroupStdinSourceFd;
       }
-      if (prepared.stdin !== undefined) ctx.state.groupStdin = savedGroupStdin;
     }
   } catch (error) {
     if (!(error instanceof ControlFlowError) || !prepared) throw error;

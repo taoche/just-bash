@@ -316,6 +316,8 @@ export interface ProcessState {
 export interface IOState {
   /** Stdin available for commands in compound commands (groups, subshells, while loops with piped input) */
   groupStdin?: string;
+  /** Descriptor that supplied `groupStdin`, when it has a shared position. */
+  groupStdinSourceFd?: number;
   /** File descriptors for process substitution and here-docs */
   fileDescriptors?: Map<number, string>;
   /**
