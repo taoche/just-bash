@@ -815,6 +815,7 @@ export async function executeExternalCommand(
   const effectiveStdin = unsafeBytesFromLatin1(
     stdin || ctx.state.groupStdin || "",
   );
+  let stdinAccessed = false;
 
   // Build exported environment for commands that need it (printenv, env, etc.)
   // Most builtins need access to the full env to modify state
@@ -877,7 +878,10 @@ export async function executeExternalCommand(
       }
     },
     exportedEnv,
-    stdin: effectiveStdin,
+    get stdin() {
+      stdinAccessed = true;
+      return effectiveStdin;
+    },
     limits: ctx.limits,
     executionScope: cmd.internalIsExtension
       ? createCommandExecutionBudget(ctx.executionScope)
@@ -930,11 +934,16 @@ export async function executeExternalCommand(
         ctx.state.signal,
       );
 
-    if (cmd.trusted) {
-      // Trusted host-extension commands may opt in to unrestricted globals.
-      return await DefenseInDepthBox.runTrustedAsync(runBoundedCommand);
-    }
-    return await runBoundedCommand();
+    const commandResult = cmd.trusted
+      ? // Trusted host-extension commands may opt in to unrestricted globals.
+        await DefenseInDepthBox.runTrustedAsync(runBoundedCommand)
+      : await runBoundedCommand();
+    return {
+      ...commandResult,
+      internalStdinConsumed:
+        commandResult.internalStdinConsumed ??
+        (stdinAccessed ? stdin.length : 0),
+    };
   } catch (error) {
     // ExecutionLimitError must propagate - these are safety limits
     if (error instanceof ExecutionLimitError) {
