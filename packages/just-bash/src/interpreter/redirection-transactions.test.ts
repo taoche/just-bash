@@ -35,6 +35,50 @@ describe("redirection transactions", () => {
     expect(await env.readFile("/tmp/all")).toBe("outerr");
   });
 
+  it("uses persistent fd 0 as later command input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec </tmp/in; read x; read y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("reads temporary fd 0 duplications from their prepared route", async () => {
+    const env = new Bash();
+    const result = await env.exec("printf value >/tmp/in; cat </tmp/in <&0");
+
+    expect(result.stdout).toBe("value");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("advances a compound command's descriptor input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec 3</tmp/in; if read x; then printf '%s' \"$x\"; fi <&3; read -u3 y; printf ':%s' \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("keeps persistent closed stdout closed", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "exec 3>&1; exec 1>&-; echo hi; echo rc=$? >&3",
+    );
+
+    expect(result.stdout).toBe("rc=1\n");
+    expect(result.stderr).toBe(
+      "bash: echo: write error: Bad file descriptor\n",
+    );
+    expect(result.exitCode).toBe(0);
+  });
+
   it("aborts when a redirection exceeds the descriptor limit", async () => {
     const env = new Bash({ executionLimits: { maxFileDescriptors: 1 } });
     const result = await env.exec(

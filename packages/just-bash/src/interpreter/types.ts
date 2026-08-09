@@ -333,6 +333,8 @@ export interface IOState {
    * by `fd-table.ts`.
    */
   fdAliases?: Map<number, Set<number>>;
+  /** Standard descriptors closed by persistent `exec N>&-` redirections. */
+  closedStandardFds?: Set<number>;
   /** Next available file descriptor for {varname}>file allocation (starts at 10) */
   nextFd?: number;
   /**

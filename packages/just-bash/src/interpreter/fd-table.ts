@@ -40,7 +40,8 @@ export type FdEntry =
   | { kind: "output"; path: string; append: boolean }
   | { kind: "readwrite"; path: string; position: number; content: string }
   | { kind: "dup-out"; sourceFd: number }
-  | { kind: "dup-in"; sourceFd: number };
+  | { kind: "dup-in"; sourceFd: number }
+  | { kind: "closed" };
 
 /**
  * A descriptor's raw value, whether it is known to hold content, and which
@@ -132,6 +133,8 @@ export function encodeFdEntry(entry: FdEntry): string {
       return `${DUP_OUT_PREFIX}${entry.sourceFd}`;
     case "dup-in":
       return `${DUP_IN_PREFIX}${entry.sourceFd}`;
+    case "closed":
+      throw new Error("Closed descriptors have no table encoding");
   }
 }
 
@@ -321,6 +324,8 @@ export function readFd(
     case "dup-out":
       return { error: "write-only" };
     case "dup-in":
+      return { error: "not-open" };
+    case "closed":
       return { error: "not-open" };
   }
 }

@@ -31,6 +31,7 @@ import {
   hasQuotedMultiValueAt,
 } from "./expansion.js";
 import {
+  advanceFd,
   closeFd,
   dupFd,
   type FdEntry,
@@ -162,6 +163,7 @@ type RedirectionTransactionState = {
   numericSnapshot: FdSnapshot;
   fdVariableSnapshot: FdSnapshot;
   standardSnapshot: FdSnapshot;
+  standardClosedSnapshot: Map<number, boolean>;
   fdVariableEnv: Map<string, string | undefined>;
   nextFd: number | undefined;
   policy: RedirectionPolicy;
@@ -342,14 +344,26 @@ async function prepareRedirectionsWithState(
 ): Promise<PreparedRedirections> {
   const targets: ExpandedRedirectTargets = new Map();
   const dupSources: PreparedDupSources = new Map();
+  const standardRoute = (fd: number, fallback: FdEntry): FdEntry =>
+    ctx.state.closedStandardFds?.has(fd)
+      ? { kind: "closed" }
+      : (getFdEntry(ctx, fd) ?? fallback);
   const standardRoutes = new Map<number, FdEntry>([
-    [0, getFdEntry(ctx, 0) ?? { kind: "dup-in", sourceFd: 0 }],
-    [1, getFdEntry(ctx, 1) ?? { kind: "dup-out", sourceFd: 1 }],
-    [2, getFdEntry(ctx, 2) ?? { kind: "dup-out", sourceFd: 2 }],
+    [0, standardRoute(0, { kind: "dup-in", sourceFd: 0 })],
+    [1, standardRoute(1, { kind: "dup-out", sourceFd: 1 })],
+    [2, standardRoute(2, { kind: "dup-out", sourceFd: 2 })],
   ]);
   const snapshot = transaction.numericSnapshot;
   let stdin: string | undefined;
   let stdinSourceFd = -1;
+  const initialStdin = standardRoutes.get(0);
+  if (initialStdin?.kind === "input") {
+    stdin = initialStdin.content;
+    stdinSourceFd = 0;
+  } else if (initialStdin?.kind === "readwrite") {
+    stdin = initialStdin.content.slice(initialStdin.position);
+    stdinSourceFd = 0;
+  }
   const base = (): PreparedRedirections => ({
     targets,
     dupSources,
@@ -398,12 +412,20 @@ async function prepareRedirectionsWithState(
       fd !== null &&
       fd < FIRST_USER_FD
     ) {
+      ctx.state.closedStandardFds?.delete(fd);
       setFdEntry(ctx, fd, entry);
     }
   };
   const bindTemporaryStandard = (fd: number, entry: FdEntry): void => {
     standardRoutes.set(fd, entry);
     rememberFd(ctx, transaction.standardSnapshot, fd);
+    if (!transaction.standardClosedSnapshot.has(fd)) {
+      transaction.standardClosedSnapshot.set(
+        fd,
+        ctx.state.closedStandardFds?.has(fd) === true,
+      );
+    }
+    ctx.state.closedStandardFds?.delete(fd);
     setFdEntry(ctx, fd, entry);
   };
   const getPreparedDupSource = (
@@ -412,7 +434,7 @@ async function prepareRedirectionsWithState(
   ): PreparedDupSource | null => {
     if (sourceFd < FIRST_USER_FD) {
       const entry = standardRoutes.get(sourceFd);
-      return entry
+      return entry && entry.kind !== "closed"
         ? {
             kind: "entry",
             entry,
@@ -782,11 +804,13 @@ async function prepareRedirectionsWithState(
           stdin = "";
           stdinSourceFd = -1;
         }
-        if (
-          transaction.policy.standard === "persistent" &&
-          effectiveFd !== null
-        ) {
-          closeFd(ctx, effectiveFd);
+        if (effectiveFd !== null && effectiveFd < FIRST_USER_FD) {
+          standardRoutes.set(effectiveFd, { kind: "closed" });
+          if (transaction.policy.standard === "persistent") {
+            closeFd(ctx, effectiveFd);
+            ctx.state.closedStandardFds ??= new Set();
+            ctx.state.closedStandardFds.add(effectiveFd);
+          }
         }
         continue;
       }
@@ -841,7 +865,15 @@ async function prepareRedirectionsWithState(
           source.entry.kind === "input" ||
           source.entry.kind === "readwrite"
         ) {
-          const readable = readFd(ctx, parsed.sourceFd);
+          const readable =
+            parsed.sourceFd < FIRST_USER_FD && !isFdOpen(ctx, parsed.sourceFd)
+              ? {
+                  content:
+                    source.entry.kind === "input"
+                      ? source.entry.content
+                      : source.entry.content.slice(source.entry.position),
+                }
+              : readFd(ctx, parsed.sourceFd);
           if ("error" in readable) {
             return fail(
               makeResult(
@@ -853,7 +885,7 @@ async function prepareRedirectionsWithState(
             );
           }
           stdin = readable.content;
-          stdinSourceFd = parsed.sourceFd;
+          stdinSourceFd = isFdOpen(ctx, parsed.sourceFd) ? parsed.sourceFd : -1;
         } else {
           stdin = inheritedStdin;
           stdinSourceFd = -1;
@@ -930,6 +962,7 @@ export function createRedirectionTransaction(
     numericSnapshot: new Map(),
     fdVariableSnapshot: new Map(),
     standardSnapshot: new Map(),
+    standardClosedSnapshot: new Map(),
     fdVariableEnv: new Map(),
     nextFd: ctx.state.nextFd,
     policy,
@@ -946,6 +979,14 @@ export function createRedirectionTransaction(
       }
       if (policy.standard === "temporary") {
         restoreFds(ctx, state.standardSnapshot);
+        for (const [fd, wasClosed] of state.standardClosedSnapshot) {
+          if (wasClosed) {
+            ctx.state.closedStandardFds ??= new Set();
+            ctx.state.closedStandardFds.add(fd);
+          } else {
+            ctx.state.closedStandardFds?.delete(fd);
+          }
+        }
       }
       if (
         policy.fdVariables === "temporary" ||
@@ -1032,6 +1073,14 @@ export async function withPreparedRedirections(
         prepared.standardRoutes,
       );
     } finally {
+      if (prepared.stdinSourceFd >= 0 && prepared.stdin !== undefined) {
+        const remaining = ctx.state.groupStdin ?? prepared.stdin;
+        advanceFd(
+          ctx,
+          prepared.stdinSourceFd,
+          prepared.stdin.length - remaining.length,
+        );
+      }
       if (prepared.stdin !== undefined) ctx.state.groupStdin = savedGroupStdin;
     }
   } catch (error) {
@@ -1123,6 +1172,7 @@ export async function applyRedirections(
   const persistentSink = (fd: 1 | 2): RedirectSink | null => {
     const entry = standardRoutes.get(fd) ?? getFdEntry(ctx, fd);
     if (!entry) return null;
+    if (entry.kind === "closed") return { kind: "invalid-output", fd };
     if (entry.kind === "input" || entry.kind === "dup-in") {
       return { kind: "invalid-output", fd };
     }

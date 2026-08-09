@@ -98,6 +98,7 @@ export function beginIsolatedShellState(state: InterpreterState): () => void {
     fileDescriptors: state.fileDescriptors,
     inputFds: state.inputFds,
     fdAliases: state.fdAliases,
+    closedStandardFds: state.closedStandardFds,
     nextFd: state.nextFd,
     readonlyVars: state.readonlyVars,
     associativeArrays: state.associativeArrays,
@@ -151,6 +152,9 @@ export function beginIsolatedShellState(state: InterpreterState): () => void {
   // Travels with the descriptor table it classifies.
   state.inputFds = state.inputFds ? new Set(state.inputFds) : undefined;
   state.fdAliases = cloneFdAliases(state.fdAliases);
+  state.closedStandardFds = state.closedStandardFds
+    ? new Set(state.closedStandardFds)
+    : undefined;
   state.readonlyVars = new Set(state.readonlyVars);
   state.associativeArrays = new Set(state.associativeArrays);
   state.namerefs = new Set(state.namerefs);
