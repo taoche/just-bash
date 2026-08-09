@@ -33,7 +33,8 @@ export const quoteRemoveEscapes = (value: string): string => {
       continue;
     }
     if (character === "\\" && !quote && index + 1 < value.length) {
-      result += value[index + 1];
+      const escaped = value[index + 1];
+      result += escaped === "$" || escaped === "`" ? `\\${escaped}` : escaped;
       index += 1;
       continue;
     }

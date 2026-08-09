@@ -63,6 +63,16 @@ describe("escaped words", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("keeps escaped parameter markers literal in array subscripts", async () => {
+    const result = await new Bash().exec(
+      "declare -A a; x=key; a[\\$x]=literal; declare -p a",
+    );
+
+    expect(result.stdout).toBe("declare -A a=(['$x']=literal)\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("does not over-escape literals in function descriptions", async () => {
     const result = await new Bash().exec(
       "function f { echo foo#bar mid!word pre~post; }; type f",
