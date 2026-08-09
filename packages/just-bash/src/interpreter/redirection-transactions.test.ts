@@ -35,6 +35,20 @@ describe("redirection transactions", () => {
     expect(await env.readFile("/tmp/all")).toBe("outerr");
   });
 
+  it("aborts when a redirection exceeds the descriptor limit", async () => {
+    const env = new Bash({ executionLimits: { maxFileDescriptors: 1 } });
+    const result = await env.exec(
+      "exec 3>/tmp/held; : 4>/tmp/excess; printf after",
+    );
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "bash: too many open file descriptors (max 1)\n",
+    );
+    expect(result.exitCode).toBe(126);
+    await expect(env.readFile("/tmp/excess")).rejects.toThrow();
+  });
+
   it("preserves a named fd-variable allocation through ReturnError", async () => {
     const env = new Bash();
     const result = await env.exec(

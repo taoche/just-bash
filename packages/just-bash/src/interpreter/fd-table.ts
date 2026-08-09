@@ -368,15 +368,22 @@ export async function writeFdEntry(
     await ctx.fs.appendFile(entry.path, content, encoding);
     return true;
   }
-  if (entry.kind !== "readwrite") return false;
+  const liveEntry = descriptors
+    .map((fd) => getFdEntry(ctx, fd))
+    .find(
+      (candidate): candidate is Extract<FdEntry, { kind: "readwrite" }> =>
+        candidate?.kind === "readwrite",
+    );
+  const writeEntry = liveEntry ?? entry;
+  if (writeEntry.kind !== "readwrite") return false;
 
   const updatedContent =
-    entry.content.slice(0, entry.position) +
+    writeEntry.content.slice(0, writeEntry.position) +
     content +
-    entry.content.slice(entry.position + content.length);
+    writeEntry.content.slice(writeEntry.position + content.length);
   const updated: FdEntry = {
-    ...entry,
-    position: entry.position + content.length,
+    ...writeEntry,
+    position: writeEntry.position + content.length,
     content: updatedContent,
   };
   await ctx.fs.writeFile(entry.path, updatedContent, encoding);

@@ -388,6 +388,7 @@ async function prepareRedirectionsWithState(
     return fail(
       makeResult("", cause.stderr, ExecutionLimitError.EXIT_CODE),
       index,
+      cause,
     );
   };
   const persistStandard = (fd: number | null, entry: FdEntry): void => {
@@ -412,7 +413,11 @@ async function prepareRedirectionsWithState(
     if (sourceFd < FIRST_USER_FD) {
       const entry = standardRoutes.get(sourceFd);
       return entry
-        ? { kind: "entry", entry, descriptors: [] }
+        ? {
+            kind: "entry",
+            entry,
+            descriptors: getFdAliasMembers(ctx, sourceFd),
+          }
         : { kind: "standard", fd: sourceFd };
     }
     return getDupSource(ctx, sourceFd, input);
