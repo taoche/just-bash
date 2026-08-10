@@ -8,7 +8,6 @@ import {
   AST,
   type AssignmentNode,
   type RedirectionNode,
-  type RedirectionOperator,
   type SimpleCommandNode,
   type WordNode,
 } from "../ast/types.js";
@@ -78,12 +77,7 @@ export function parseRedirection(p: Parser): RedirectionNode {
     opToken.type === TokenType.DLESS ||
     opToken.type === TokenType.DLESSDASH
   ) {
-    return parseHeredocStart(
-      p,
-      operator,
-      fd,
-      opToken.type === TokenType.DLESSDASH,
-    );
+    return parseHeredocStart(p, fd, opToken.type === TokenType.DLESSDASH);
   }
 
   // Parse target
@@ -97,7 +91,6 @@ export function parseRedirection(p: Parser): RedirectionNode {
 
 function parseHeredocStart(
   p: Parser,
-  _operator: RedirectionOperator,
   fd: number | null,
   stripTabs: boolean,
 ): RedirectionNode {
@@ -106,15 +99,8 @@ function parseHeredocStart(
     p.error("Expected here-document delimiter");
   }
 
-  const delimToken = p.current();
-  const delimiterWord = p.parseWord(WordParseContext.HeredocDelimiter);
-  let delimiter = "";
-  for (const part of delimiterWord.parts) {
-    if (part.type !== "Literal") {
-      p.error("Invalid here-document delimiter");
-    }
-    delimiter += part.value;
-  }
+  const delimToken = p.advance();
+  const delimiter = delimToken.heredocDelimiter ?? delimToken.value;
   const quoted = delimToken.quoted || false;
 
   // Create placeholder redirection

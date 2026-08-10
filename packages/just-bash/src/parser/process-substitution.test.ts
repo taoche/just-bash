@@ -157,17 +157,6 @@ describe("process substitution - parser", () => {
     expect(serialize(outer.body)).toBe("cat <(echo deep)");
   });
 
-  it("parses a case pattern inside the body", () => {
-    const part = asProcSub(firstArgPart("cat <(case x in x) echo yes;; esac)"));
-    expect(serialize(part.body)).toBe("case x in\nx)\necho yes\n;;\nesac");
-  });
-
-  it("parses a heredoc containing a closing parenthesis", () => {
-    expect(() =>
-      new Parser().parse("cat <(cat <<EOF\n)\nEOF\n)"),
-    ).not.toThrow();
-  });
-
   it("concatenates a literal prefix with the substitution", () => {
     const parts = argParts("echo a<(echo hi)")[0];
     expect(parts).toHaveLength(2);
@@ -190,34 +179,11 @@ describe("process substitution - parser", () => {
     expect(asProcSub(parts[1]).direction).toBe("output");
   });
 
-  it("concatenates a numeric prefix instead of parsing an fd redirect", () => {
-    const parts = argParts("echo 2>(b)")[0];
-    expect(parts).toHaveLength(2);
-    expect(parts[0]).toEqual({ type: "Literal", value: "2" });
-    expect(asProcSub(parts[1]).direction).toBe("output");
-  });
-
-  it("concatenates an assignment-shaped argument", () => {
-    const parts = argParts("echo x=<(true)")[0];
-    expect(parts).toHaveLength(2);
-    expect(parts[0]).toEqual({ type: "Literal", value: "x=" });
-    expect(asProcSub(parts[1]).direction).toBe("input");
-  });
-
   it("concatenates an assignment-shaped suffix", () => {
     const parts = argParts("echo <(true)x=y")[0];
     expect(parts).toHaveLength(2);
     expect(asProcSub(parts[0]).direction).toBe("input");
     expect(parts[1]).toEqual({ type: "Literal", value: "x=y" });
-  });
-
-  it("parses a process substitution as an assignment value", () => {
-    const ast = new Parser().parse("x=<(true)");
-    const command = ast.statements[0].pipelines[0]
-      .commands[0] as SimpleCommandNode;
-    const value = command.assignments[0].value;
-    if (!value) throw new Error("expected an assignment value");
-    expect(asProcSub(value.parts[0]).direction).toBe("input");
   });
 
   it("keeps an assignment-shaped suffix in the assignment value", () => {

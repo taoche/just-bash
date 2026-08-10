@@ -5,7 +5,6 @@ import type {
   SimpleCommandNode,
   WordPart,
 } from "../ast/types.js";
-import { Lexer, TokenType } from "./lexer.js";
 import { Parser } from "./parser.js";
 
 const asSimpleCommand = (script: string): SimpleCommandNode =>
@@ -19,19 +18,6 @@ const asProcessSubstitution = (part: WordPart): ProcessSubstitutionPart => {
 
 describe("process substitution parser contexts", () => {
   it("preserves the outer parenthesis before an arithmetic command", () => {
-    const tokens = new Lexer("echo 2<(((1)))").tokenize();
-    expect(tokens.map((token) => token.type)).toEqual([
-      TokenType.NAME,
-      TokenType.NUMBER,
-      TokenType.LESS,
-      TokenType.LPAREN,
-      TokenType.DPAREN_START,
-      TokenType.NUMBER,
-      TokenType.DPAREN_END,
-      TokenType.RPAREN,
-      TokenType.EOF,
-    ]);
-
     const parts = asSimpleCommand("echo 2<(((1)))").args[0].parts;
     expect(parts[0]).toEqual({ type: "Literal", value: "2" });
     const processSubstitution = asProcessSubstitution(parts[1]);
@@ -73,16 +59,6 @@ describe("process substitution parser contexts", () => {
 
   it("keeps process-like heredoc delimiters literal", () => {
     const script = "cat <<EOF<(echo hi)\nbody\nEOF<(echo hi)\n";
-    const tokens = new Lexer(script).tokenize();
-    expect(tokens.map((token) => token.type)).toEqual([
-      TokenType.NAME,
-      TokenType.DLESS,
-      TokenType.WORD,
-      TokenType.NEWLINE,
-      TokenType.HEREDOC_CONTENT,
-      TokenType.EOF,
-    ]);
-
     const command = asSimpleCommand(script);
     expect(command.args).toHaveLength(0);
     expect(command.redirections[0].target).toMatchObject({

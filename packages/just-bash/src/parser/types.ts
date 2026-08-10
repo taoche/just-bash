@@ -17,7 +17,6 @@ export enum WordParseContext {
   Assignment = 1 << 0,
   NoBraceExpansion = 1 << 1,
   Regex = 1 << 2,
-  HeredocDelimiter = 1 << 3,
 }
 
 // Pre-computed Sets for fast redirection token lookup (avoids array allocation per call)

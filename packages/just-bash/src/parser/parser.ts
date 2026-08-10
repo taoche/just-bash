@@ -60,27 +60,11 @@ export type { ParseError } from "./types.js";
 // Re-export for backwards compatibility
 export { ParseException } from "./types.js";
 
-// Tokens retain physical lines from the outer lexer. Process sources own a
-// dense logical line sequence: leading/blank lines do not advance LINENO, while
-// each later command-bearing line advances it once.
-type PhysicalSourceLineOwner = {
-  type: "physical";
-  physicalLine: number;
-  logicalLine: number;
-};
-
-type ProcessSourceLineOwner = {
-  type: "process";
-  currentPhysicalLine: number;
+// Process bodies own a dense logical line sequence: leading/blank lines do not
+// advance LINENO, while each later command-bearing line advances it once.
+type ProcessLineState = {
+  currentPhysicalLine?: number;
   currentLogicalLine: number;
-};
-
-type SourceLineOwner = PhysicalSourceLineOwner | ProcessSourceLineOwner;
-
-const ROOT_SOURCE_LINE_OWNER: PhysicalSourceLineOwner = {
-  type: "physical",
-  physicalLine: 1,
-  logicalLine: 1,
 };
 
 /**
@@ -98,7 +82,7 @@ export class Parser {
   private readonly parseBudget: ParseBudget;
   private readonly ownsParseBudget: boolean;
   private _input = "";
-  private sourceLineOwner: SourceLineOwner = ROOT_SOURCE_LINE_OWNER;
+  private processLineState: ProcessLineState | undefined;
 
   constructor(parseBudget?: ParseBudget) {
     this.parseBudget = parseBudget ?? new ParseBudget();
@@ -156,7 +140,7 @@ export class Parser {
       }
 
       this._input = input;
-      this.sourceLineOwner = ROOT_SOURCE_LINE_OWNER;
+      this.processLineState = undefined;
       const lexer = new Lexer(input, options);
       this.tokens = lexer.tokenize();
 
@@ -188,7 +172,7 @@ export class Parser {
       this.tokens = tokens;
       this.pos = 0;
       this.pendingHeredocs = [];
-      this.sourceLineOwner = ROOT_SOURCE_LINE_OWNER;
+      this.processLineState = undefined;
       this.parseBudget.chargeTokens(tokens.length);
       return this.parseScript();
     } finally {
@@ -223,19 +207,16 @@ export class Parser {
   }
 
   getSourceLine(token: Token = this.current()): number {
-    if (this.sourceLineOwner.type === "process") {
-      if (token.line > this.sourceLineOwner.currentPhysicalLine) {
-        this.sourceLineOwner.currentPhysicalLine = token.line;
-        this.sourceLineOwner.currentLogicalLine += 1;
-      }
-      return this.sourceLineOwner.currentLogicalLine;
-    }
+    const processLineState = this.processLineState;
+    if (!processLineState) return token.line;
 
-    return (
-      this.sourceLineOwner.logicalLine +
-      token.line -
-      this.sourceLineOwner.physicalLine
-    );
+    if (processLineState.currentPhysicalLine === undefined) {
+      processLineState.currentPhysicalLine = token.line;
+    } else if (token.line > processLineState.currentPhysicalLine) {
+      processLineState.currentPhysicalLine = token.line;
+      processLineState.currentLogicalLine += 1;
+    }
+    return processLineState.currentLogicalLine;
   }
 
   /**
@@ -371,35 +352,17 @@ export class Parser {
   }
 
   private isCommandStart(): boolean {
-    if (this.currentTokenJoinsProcessSubstitution()) return true;
-
     const t = this.current().type;
     return (
-      isReservedWordToken(t) ||
-      t === TokenType.WORD ||
-      t === TokenType.NAME ||
-      t === TokenType.NUMBER ||
+      this.isWord() ||
       t === TokenType.ASSIGNMENT_WORD ||
       t === TokenType.FD_VARIABLE ||
       t === TokenType.LPAREN ||
       t === TokenType.LBRACE ||
       t === TokenType.DPAREN_START ||
       t === TokenType.DBRACK_START ||
-      t === TokenType.BANG ||
-      // Redirections can appear before command name (e.g., <<EOF tac)
-      // POSIX allows simple_command to start with io_redirect
-      t === TokenType.LESS ||
-      t === TokenType.GREAT ||
-      t === TokenType.DLESS ||
-      t === TokenType.DGREAT ||
-      t === TokenType.LESSAND ||
-      t === TokenType.GREATAND ||
-      t === TokenType.LESSGREAT ||
-      t === TokenType.DLESSDASH ||
-      t === TokenType.CLOBBER ||
-      t === TokenType.TLESS ||
-      t === TokenType.AND_GREAT ||
-      t === TokenType.AND_DGREAT
+      // POSIX allows simple_command to start with io_redirect.
+      CmdParser.isRedirection(this)
     );
   }
 
@@ -487,11 +450,7 @@ export class Parser {
     //   set -o errexit
     //   {ls;     # This is a command "{ls" that fails (not brace group)
     //   }        # This would be a syntax error, but errexit exits first
-    if (
-      (t === TokenType.RBRACE &&
-        !this.currentTokenJoinsProcessSubstitution()) ||
-      t === TokenType.RPAREN
-    ) {
+    if (t === TokenType.RBRACE || t === TokenType.RPAREN) {
       const errorMsg = `syntax error near unexpected token \`${v}'`;
       this.advance(); // Consume the token
       // Create an empty statement with a deferred error
@@ -825,30 +784,12 @@ export class Parser {
       t === TokenType.WORD ||
       t === TokenType.NAME ||
       t === TokenType.NUMBER ||
-      // Reserved words can be used as words in certain contexts (e.g., "echo if")
-      t === TokenType.IF ||
-      t === TokenType.FOR ||
-      t === TokenType.WHILE ||
-      t === TokenType.UNTIL ||
-      t === TokenType.CASE ||
-      t === TokenType.FUNCTION ||
-      t === TokenType.ELSE ||
-      t === TokenType.ELIF ||
-      t === TokenType.FI ||
-      t === TokenType.THEN ||
-      t === TokenType.DO ||
-      t === TokenType.DONE ||
-      t === TokenType.ESAC ||
-      t === TokenType.IN ||
-      t === TokenType.SELECT ||
-      t === TokenType.TIME ||
-      t === TokenType.COPROC ||
+      // Reserved words can be arguments after a command (e.g. "echo if").
+      isReservedWordToken(t) ||
       // Operators that can appear as words in command arguments (e.g., "[ ! -z foo ]")
       t === TokenType.BANG ||
       (t === TokenType.ASSIGNMENT_WORD &&
-        (context &
-          (WordParseContext.Regex | WordParseContext.HeredocDelimiter)) !==
-          0)
+        (context & WordParseContext.Regex) !== 0)
     );
   }
 
@@ -865,13 +806,8 @@ export class Parser {
   private currentTokenJoinsProcessSubstitution(): boolean {
     const type = this.current().type;
     if (
-      !this.isWordToken(WordParseContext.Default) &&
-      type !== TokenType.ASSIGNMENT_WORD &&
-      type !== TokenType.LBRACE &&
-      type !== TokenType.RBRACE &&
-      type !== TokenType.DBRACK_START &&
-      type !== TokenType.DBRACK_END &&
-      type !== TokenType.FD_VARIABLE
+      type === TokenType.COMMENT ||
+      !this.isAdjacentWordToken(WordParseContext.Default)
     ) {
       return false;
     }
@@ -913,11 +849,7 @@ export class Parser {
   ): WordNode {
     while (previousEnd === this.current().start) {
       if (this.isProcessSubstitutionStart()) {
-        parts.push(
-          this.parseProcessSubstitution(
-            (context & WordParseContext.HeredocDelimiter) !== 0,
-          ),
-        );
+        parts.push(this.parseProcessSubstitution());
         previousEnd = this.tokens[this.pos - 1].end;
         continue;
       }
@@ -961,10 +893,6 @@ export class Parser {
     context: WordParseContext,
     atWordStart = true,
   ): WordNode {
-    if ((context & WordParseContext.HeredocDelimiter) !== 0) {
-      return AST.word([AST.literal(token.heredocDelimiter ?? token.value)]);
-    }
-
     if (
       token.type === TokenType.LBRACE ||
       token.type === TokenType.RBRACE ||
@@ -1031,37 +959,24 @@ export class Parser {
     );
   }
 
-  private parseProcessSubstitution(literal: boolean = false): WordPart {
+  private parseProcessSubstitution(): WordPart {
     const operator = this.advance();
     this.expect(TokenType.LPAREN);
-    let firstBodyTokenOffset = 0;
-    while (
-      this.peek(firstBodyTokenOffset).type === TokenType.NEWLINE ||
-      this.peek(firstBodyTokenOffset).type === TokenType.COMMENT
-    ) {
-      firstBodyTokenOffset += 1;
-    }
-    const firstBodyToken = this.peek(firstBodyTokenOffset);
-    const previousSourceLineOwner = this.sourceLineOwner;
+    const previousProcessLineState = this.processLineState;
     const logicalLine = this.getSourceLine(operator);
-    this.sourceLineOwner = {
-      type: "process",
-      currentPhysicalLine: firstBodyToken.line,
+    this.processLineState = {
       currentLogicalLine: logicalLine,
     };
     let body: ScriptNode;
     try {
       body = AST.script(this.parseCompoundList());
     } finally {
-      this.sourceLineOwner = previousSourceLineOwner;
+      this.processLineState = previousProcessLineState;
     }
     if (this.check(TokenType.EOF)) {
       this.error("unexpected EOF while looking for matching `)'");
     }
-    const closingParen = this.expect(TokenType.RPAREN);
-    if (literal) {
-      return AST.literal(this._input.slice(operator.start, closingParen.end));
-    }
+    this.expect(TokenType.RPAREN);
     return AST.processSubstitution(
       body,
       operator.type === TokenType.LESS ? "input" : "output",

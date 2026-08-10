@@ -300,7 +300,6 @@ export class Lexer {
   private pendingHeredocs: {
     delimiter: string;
     stripTabs: boolean;
-    quoted: boolean;
   }[] = [];
   private pendingHeredocDelimiterMode: boolean | undefined;
   // Track depth inside (( )) for C-style for loops and arithmetic commands
@@ -1996,17 +1995,6 @@ export class Lexer {
     }
   }
 
-  /**
-   * Register a here-document to be read after the next newline
-   */
-  addPendingHeredoc(
-    delimiter: string,
-    stripTabs: boolean,
-    quoted: boolean,
-  ): void {
-    this.pendingHeredocs.push({ delimiter, stripTabs, quoted });
-  }
-
   private readHeredocDelimiterToken(
     start: number,
     line: number,
@@ -2014,137 +2002,45 @@ export class Lexer {
     stripTabs: boolean,
   ): Token {
     const input = this.input;
-    let pos = start;
-    let currentLine = line;
-    let currentColumn = column;
-    let substitutionDepth = 0;
-    let delimiter = "";
-    let quoted = false;
-
-    const advance = (): string => {
-      const char = input[pos];
-      pos += 1;
-      if (char === "\n") {
-        currentLine += 1;
-        currentColumn = 1;
-      } else {
-        currentColumn += 1;
-      }
-      return char;
-    };
-
-    while (pos < input.length) {
-      const char = input[pos];
-
-      if (
-        substitutionDepth === 0 &&
-        (char === " " ||
-          char === "\t" ||
-          char === "\n" ||
-          char === ";" ||
-          char === "&" ||
-          char === "|")
-      ) {
-        break;
-      }
-
-      if (
-        substitutionDepth === 0 &&
-        (char === "$" || char === "<" || char === ">") &&
-        input[pos + 1] === "("
-      ) {
-        delimiter += advance();
-        delimiter += advance();
-        substitutionDepth = 1;
-        continue;
-      }
-
-      if (
-        substitutionDepth === 0 &&
-        (char === "<" || char === ">" || char === "(" || char === ")")
-      ) {
-        break;
-      }
-
-      if (char === "'" || char === '"') {
-        const nested = substitutionDepth > 0;
-        if (!nested) quoted = true;
-        const quote = advance();
-        if (nested) delimiter += quote;
-        while (pos < input.length && input[pos] !== quote) {
-          if (input[pos] === "\\" && quote === '"' && pos + 1 < input.length) {
-            if (nested) {
-              delimiter += advance();
-              delimiter += advance();
-              continue;
-            }
-            const escaped = input[pos + 1];
-            if (
-              escaped === "$" ||
-              escaped === "`" ||
-              escaped === '"' ||
-              escaped === "\\" ||
-              escaped === "\n"
-            ) {
-              advance();
-              const value = advance();
-              if (value !== "\n") delimiter += value;
-              continue;
-            }
-          }
-          delimiter += advance();
-        }
-        if (input[pos] === quote) {
-          const closingQuote = advance();
-          if (nested) delimiter += closingQuote;
-        }
-        continue;
-      }
-
-      if (char === "\\" && pos + 1 < input.length) {
-        if (substitutionDepth > 0) {
-          delimiter += advance();
-          delimiter += advance();
-          continue;
-        }
-        quoted = true;
-        advance();
-        const value = advance();
-        if (value !== "\n") delimiter += value;
-        continue;
-      }
-
-      if (substitutionDepth > 0) {
-        if (char === "(") {
-          substitutionDepth += 1;
-        } else if (char === ")") {
-          substitutionDepth -= 1;
-        }
-      }
-      delimiter += advance();
-    }
-
-    if (substitutionDepth > 0) {
+    const {
+      delim: delimiter,
+      endPos,
+      quoted,
+      unclosedSubstitution,
+    } = readHeredocDelimiter(input, start);
+    if (unclosedSubstitution) {
       throw new LexerError(
         "unexpected EOF while looking for matching `)'",
         line,
         column,
       );
     }
-    if (pos === start) {
+    if (endPos === start) {
       throw new LexerError("Expected here-document delimiter", line, column);
     }
 
-    this.pos = pos;
+    let currentLine = line;
+    let currentColumn = column;
+    for (let index = start; index < endPos; index++) {
+      const char = input[index];
+      if (char === "\n") {
+        currentLine += 1;
+        currentColumn = 1;
+      } else {
+        currentColumn += 1;
+      }
+    }
+
+    this.pos = endPos;
     this.line = currentLine;
     this.column = currentColumn;
-    this.pendingHeredocs.push({ delimiter, stripTabs, quoted });
+    this.pendingHeredocs.push({ delimiter, stripTabs });
 
     return {
       type: TokenType.WORD,
-      value: input.slice(start, pos),
+      value: input.slice(start, endPos),
       start,
-      end: pos,
+      end: endPos,
       line,
       column,
       quoted,

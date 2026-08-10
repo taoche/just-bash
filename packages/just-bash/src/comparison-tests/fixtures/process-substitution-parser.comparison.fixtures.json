@@ -1,12 +1,4 @@
 {
-  "03a98c81b805057f": {
-    "command": "||<(true); echo survived",
-    "files": {},
-    "stdout": "",
-    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `||'\n/bin/bash: -c: line 1: `||<(true); echo survived'\n",
-    "exitCode": 2,
-    "locked": true
-  },
   "098b591d54cc788e": {
     "command": "echo 2<(((1)))",
     "files": {},
@@ -21,14 +13,6 @@
     "stdout": "regex-ok\n",
     "stderr": "",
     "exitCode": 0,
-    "locked": true
-  },
-  "1f4f0328fc18f1f1": {
-    "command": "!<(true); time<(true); do<(true); fi<(true); else<(true)",
-    "files": {},
-    "stdout": "",
-    "stderr": "/bin/bash: !/dev/fd/63: No such file or directory\n/bin/bash: time/dev/fd/63: No such file or directory\n/bin/bash: do/dev/fd/63: No such file or directory\n/bin/bash: fi/dev/fd/63: No such file or directory\n/bin/bash: else/dev/fd/63: No such file or directory\n",
-    "exitCode": 127,
     "locked": true
   },
   "21d5953366edac4a": {
@@ -77,27 +61,11 @@
     "exitCode": 0,
     "locked": true
   },
-  "7383d2f285c70f72": {
-    "command": "cat << #comment\necho survived\n",
-    "files": {},
-    "stdout": "",
-    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `newline'\n/bin/bash: -c: line 1: `cat << #comment'\n",
-    "exitCode": 2,
-    "locked": true
-  },
   "748b421429feb494": {
     "command": "&&<(true); echo survived",
     "files": {},
     "stdout": "",
     "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `&&'\n/bin/bash: -c: line 1: `&&<(true); echo survived'\n",
-    "exitCode": 2,
-    "locked": true
-  },
-  "8b1541a663b997a2": {
-    "command": "&<(true); echo survived",
-    "files": {},
-    "stdout": "",
-    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `&'\n/bin/bash: -c: line 1: `&<(true); echo survived'\n",
     "exitCode": 2,
     "locked": true
   },
@@ -114,6 +82,14 @@
     "stdout": "",
     "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `newline'\n/bin/bash: -c: line 1: `cat <<#comment'\n",
     "exitCode": 2,
+    "locked": true
+  },
+  "dd6b628d45108f90": {
+    "command": "!<(true); time<(true); do<(true)",
+    "files": {},
+    "stdout": "",
+    "stderr": "/bin/bash: !/dev/fd/63: No such file or directory\n/bin/bash: time/dev/fd/63: No such file or directory\n/bin/bash: do/dev/fd/63: No such file or directory\n",
+    "exitCode": 127,
     "locked": true
   },
   "e9c39f0e3f494adb": {

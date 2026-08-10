@@ -141,9 +141,10 @@ export function isDollarDparenSubshell(value: string, start: number): boolean {
 
 /**
  * Read a heredoc delimiter starting at `pos` (the first character after the
- * `<<` / `<<-` operator and any leading blanks). Returns the *unquoted*
- * delimiter — the exact string a terminator line must equal — and the index
- * just past the delimiter token.
+ * `<<` / `<<-` operator and any leading blanks). Returns the delimiter after
+ * outer-word quote removal, plus metadata needed by both the lexer and nested
+ * substitution scanner. Syntax inside unexpanded `$(`, `<(`, and `>(` atoms
+ * remains literal.
  *
  * Quoting only controls whether the body is expanded, which is irrelevant to
  * finding the substitution boundary, so `'EOF'`, `"EOF"`, and `\EOF` all yield
@@ -152,10 +153,16 @@ export function isDollarDparenSubshell(value: string, start: number): boolean {
 export function readHeredocDelimiter(
   value: string,
   pos: number,
-): { delim: string; endPos: number } {
+): {
+  delim: string;
+  endPos: number;
+  quoted: boolean;
+  unclosedSubstitution: boolean;
+} {
   let delim = "";
   let i = pos;
   let substitutionDepth = 0;
+  let quoted = false;
   const isWordEnd = (c: string): boolean =>
     c === " " ||
     c === "\t" ||
@@ -171,6 +178,7 @@ export function readHeredocDelimiter(
     const c = value[i];
     if (c === "'") {
       const nested = substitutionDepth > 0;
+      if (!nested) quoted = true;
       if (nested) delim += c;
       i++;
       while (i < value.length && value[i] !== "'") {
@@ -187,6 +195,7 @@ export function readHeredocDelimiter(
     }
     if (c === '"') {
       const nested = substitutionDepth > 0;
+      if (!nested) quoted = true;
       if (nested) delim += c;
       i++;
       while (i < value.length && value[i] !== '"') {
@@ -225,6 +234,7 @@ export function readHeredocDelimiter(
         i += 2;
         continue;
       }
+      quoted = true;
       const escaped = value[i + 1];
       if (escaped !== "\n") delim += escaped;
       i += 2;
@@ -250,7 +260,12 @@ export function readHeredocDelimiter(
     delim += c;
     i++;
   }
-  return { delim, endPos: i };
+  return {
+    delim,
+    endPos: i,
+    quoted,
+    unclosedSubstitution: substitutionDepth > 0,
+  };
 }
 
 /**

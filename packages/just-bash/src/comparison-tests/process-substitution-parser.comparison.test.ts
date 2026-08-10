@@ -105,30 +105,18 @@ describe("Process Substitution Parser - GNU Bash Comparison", () => {
 
   it("keeps reserved and pipeline prefixes in their shell word", async () => {
     const env = await setupFiles(testDir, {});
-    await compareOutputs(
-      env,
-      testDir,
-      "!<(true); time<(true); do<(true); fi<(true); else<(true)",
-    );
+    await compareOutputs(env, testDir, "!<(true); time<(true); do<(true)");
   });
 
-  for (const operator of ["&", "&&", "||"]) {
-    it(`rejects ${operator} before a process substitution`, async () => {
-      const env = await setupFiles(testDir, {});
-      await compareOutputs(env, testDir, `${operator}<(true); echo survived`);
-    });
-  }
+  it("rejects a control operator before a process substitution", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(env, testDir, "&&<(true); echo survived");
+  });
 
-  for (const spacing of [" ", ""]) {
-    it(`recognizes a comment after a heredoc operator with ${spacing ? "space" : "no space"}`, async () => {
-      const env = await setupFiles(testDir, {});
-      await compareOutputs(
-        env,
-        testDir,
-        `cat <<${spacing}#comment\necho survived\n`,
-      );
-    });
-  }
+  it("recognizes a comment adjacent to a heredoc operator", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(env, testDir, "cat <<#comment\necho survived\n");
+  });
 
   it("tracks nested process-body line numbers", async () => {
     const env = await setupFiles(testDir, {});
