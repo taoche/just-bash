@@ -88,11 +88,7 @@ describe("Process Substitution Parser - GNU Bash Comparison", () => {
   for (const operator of ["&", "&&", "||"]) {
     it(`rejects ${operator} before a process substitution`, async () => {
       const env = await setupFiles(testDir, {});
-      await compareOutputs(
-        env,
-        testDir,
-        `${operator}<(true); echo survived`,
-      );
+      await compareOutputs(env, testDir, `${operator}<(true); echo survived`);
     });
   }
 
