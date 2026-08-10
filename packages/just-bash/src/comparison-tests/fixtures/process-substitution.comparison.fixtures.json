@@ -45,14 +45,6 @@
     "exitCode": 0,
     "locked": true
   },
-  "237551a8eb90e8b6": {
-    "command": "cat <(case x in x) echo case-ok;; esac)",
-    "files": {},
-    "stdout": "case-ok\n",
-    "stderr": "",
-    "exitCode": 0,
-    "locked": true
-  },
   "2702326abcba5d31": {
     "command": "echo '<(echo hi)' \"<(echo hi)\"",
     "files": {},
@@ -118,6 +110,13 @@
     "command": "wc -c < <(printf 'abc') | tr -d ' '",
     "files": {},
     "stdout": "3\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  "6b289eae25c400b4": {
+    "command": "cat <(case x in (x) echo case-ok;; esac)",
+    "files": {},
+    "stdout": "case-ok\n",
     "stderr": "",
     "exitCode": 0
   },
