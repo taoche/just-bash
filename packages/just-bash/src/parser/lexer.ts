@@ -2067,10 +2067,17 @@ export class Lexer {
       }
 
       if (char === "'" || char === '"') {
-        if (substitutionDepth === 0) quoted = true;
+        const nested = substitutionDepth > 0;
+        if (!nested) quoted = true;
         const quote = advance();
+        if (nested) delimiter += quote;
         while (pos < input.length && input[pos] !== quote) {
           if (input[pos] === "\\" && quote === '"' && pos + 1 < input.length) {
+            if (nested) {
+              delimiter += advance();
+              delimiter += advance();
+              continue;
+            }
             const escaped = input[pos + 1];
             if (
               escaped === "$" ||
@@ -2088,13 +2095,19 @@ export class Lexer {
           delimiter += advance();
         }
         if (input[pos] === quote) {
-          advance();
+          const closingQuote = advance();
+          if (nested) delimiter += closingQuote;
         }
         continue;
       }
 
       if (char === "\\" && pos + 1 < input.length) {
-        if (substitutionDepth === 0) quoted = true;
+        if (substitutionDepth > 0) {
+          delimiter += advance();
+          delimiter += advance();
+          continue;
+        }
+        quoted = true;
         advance();
         const value = advance();
         if (value !== "\n") delimiter += value;

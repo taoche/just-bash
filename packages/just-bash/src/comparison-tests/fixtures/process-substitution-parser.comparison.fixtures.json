@@ -38,6 +38,14 @@
     "stderr": "",
     "exitCode": 0
   },
+  "32028f231e6bbfec": {
+    "command": "HOME=/home/demo; cat <<EOF$(echo 'x')\n$HOME\nEOF$(echo x)\n",
+    "files": {},
+    "stdout": "/home/demo\nEOFx\n",
+    "stderr": "",
+    "exitCode": 0,
+    "locked": true
+  },
   "3c6499c55a0a9106": {
     "command": "HOME=/tmp/home; x=<(true):~; echo \"$x\"",
     "files": {},
@@ -58,13 +66,6 @@
     "command": "cat <<EOF$(echo x)\ncommand-substitution-literal\nEOF$(echo x)",
     "files": {},
     "stdout": "command-substitution-literal\n",
-    "stderr": "",
-    "exitCode": 0
-  },
-  "4a6e5e082e832858": {
-    "command": "HOME=/home/demo; cat <<EOF$(echo 'x')\n$HOME\nEOF$(echo x)",
-    "files": {},
-    "stdout": "/home/demo\n",
     "stderr": "",
     "exitCode": 0
   },

@@ -72,7 +72,7 @@ describe("Process Substitution Parser - GNU Bash Comparison", () => {
     await compareOutputs(
       env,
       testDir,
-      "HOME=/home/demo; cat <<EOF$(echo 'x')\n$HOME\nEOF$(echo x)",
+      "HOME=/home/demo; cat <<EOF$(echo 'x')\n$HOME\nEOF$(echo x)\n",
     );
   });
 

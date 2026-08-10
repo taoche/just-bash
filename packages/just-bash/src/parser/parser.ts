@@ -887,6 +887,7 @@ export class Parser {
     return (
       this.isWordToken(context) ||
       type === TokenType.ASSIGNMENT_WORD ||
+      type === TokenType.COMMENT ||
       type === TokenType.LBRACE ||
       type === TokenType.RBRACE ||
       type === TokenType.DBRACK_START ||

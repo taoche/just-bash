@@ -123,11 +123,11 @@ describe("process substitution parser contexts", () => {
   for (const delimiter of ["EOF$(echo 'x')", "EOF<(echo 'x')"]) {
     it(`does not quote heredoc bodies from nested quotes in ${delimiter.slice(3, 5)}`, () => {
       const command = asSimpleCommand(
-        `cat <<${delimiter}\n$HOME\n${delimiter.replace("'x'", "x")}\n`,
+        `cat <<${delimiter}\n$HOME\n${delimiter}\n`,
       );
       expect(command.redirections[0].target).toMatchObject({
         type: "HereDoc",
-        delimiter: delimiter.replace("'x'", "x"),
+        delimiter,
         quoted: false,
       });
     });
@@ -140,6 +140,16 @@ describe("process substitution parser contexts", () => {
     expect(command.args[1].parts[1]).toEqual({
       type: "Literal",
       value: "~",
+    });
+  });
+
+  it("preserves adjacent hash suffixes after process substitutions", () => {
+    const command = asSimpleCommand("printf '<%s>\\n' <(true)#suffix");
+    expect(command.args[1].parts).toHaveLength(2);
+    asProcessSubstitution(command.args[1].parts[0]);
+    expect(command.args[1].parts[1]).toEqual({
+      type: "Literal",
+      value: "#suffix",
     });
   });
 

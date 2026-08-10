@@ -170,6 +170,8 @@ export function readHeredocDelimiter(
   while (i < value.length) {
     const c = value[i];
     if (c === "'") {
+      const nested = substitutionDepth > 0;
+      if (nested) delim += c;
       i++;
       while (i < value.length && value[i] !== "'") {
         delim += value[i];
@@ -177,13 +179,23 @@ export function readHeredocDelimiter(
       }
       // Skip the closing quote, but only if it is actually present so an
       // unterminated delimiter cannot push `endPos` past the end of the string.
-      if (i < value.length) i++;
+      if (i < value.length) {
+        if (nested) delim += value[i];
+        i++;
+      }
       continue;
     }
     if (c === '"') {
+      const nested = substitutionDepth > 0;
+      if (nested) delim += c;
       i++;
       while (i < value.length && value[i] !== '"') {
         if (value[i] === "\\" && i + 1 < value.length) {
+          if (nested) {
+            delim += value.slice(i, i + 2);
+            i += 2;
+            continue;
+          }
           const escaped = value[i + 1];
           if (
             escaped === "$" ||
@@ -201,10 +213,18 @@ export function readHeredocDelimiter(
         i++;
       }
       // Skip the closing quote only if present (see single-quote note above).
-      if (i < value.length) i++;
+      if (i < value.length) {
+        if (nested) delim += value[i];
+        i++;
+      }
       continue;
     }
     if (c === "\\" && i + 1 < value.length) {
+      if (substitutionDepth > 0) {
+        delim += value.slice(i, i + 2);
+        i += 2;
+        continue;
+      }
       const escaped = value[i + 1];
       if (escaped !== "\n") delim += escaped;
       i += 2;
