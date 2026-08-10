@@ -15,7 +15,6 @@ import type {
   ArithExpr,
   ArithmeticExpressionNode,
 } from "../ast/types.js";
-import { ArithmeticError } from "../interpreter/errors.js";
 import {
   ARITH_ASSIGN_OPS,
   parseAnsiCQuoting,
@@ -909,9 +908,15 @@ function parseArithPrimary(
     }
     // Check for floating point (not supported in bash arithmetic)
     if (input[currentPos] === "." && /[0-9]/.test(input[currentPos + 1])) {
-      throw new ArithmeticError(
-        `${numStr}.${input[currentPos + 1]}...: syntax error: invalid arithmetic operator`,
-      );
+      const errorToken = `${numStr}.${input[currentPos + 1]}...`;
+      return {
+        expr: {
+          type: "ArithSyntaxError",
+          errorToken,
+          message: `${errorToken}: syntax error: invalid arithmetic operator`,
+        },
+        pos: input.length,
+      };
     }
     // Check for array subscript on number: 1[2] is invalid - numbers can't be indexed
     // Instead of throwing at parse time, return a special node that throws at evaluation

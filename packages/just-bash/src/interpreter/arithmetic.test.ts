@@ -469,6 +469,19 @@ describe("arithmetic evaluation", () => {
     });
   });
 
+  describe("syntax errors", () => {
+    it("should reject floating-point arithmetic during expansion", async () => {
+      const env = new Bash();
+      const result = await env.exec("echo $((1.2))");
+
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe(
+        "bash: 1.2...: syntax error: invalid arithmetic operator\n",
+      );
+      expect(result.exitCode).toBe(1);
+    });
+  });
+
   describe("arithmetic command (( ))", () => {
     it("should return 0 for non-zero result", async () => {
       const env = new Bash();

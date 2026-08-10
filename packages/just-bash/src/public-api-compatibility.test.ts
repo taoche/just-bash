@@ -42,4 +42,8 @@ describe("public API source compatibility", () => {
     expect(() => parse("fi")).toThrow(BashParseError);
     expect(() => parse('echo "unterminated')).toThrow(BashParseError);
   });
+
+  it("keeps expansion-time arithmetic errors in the AST", () => {
+    expect(() => parse("echo $((1.2))")).not.toThrow();
+  });
 });
