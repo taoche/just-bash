@@ -91,8 +91,8 @@ export {
   RedirectNotAllowedError,
   TooManyRedirectsError,
 } from "./network/index.js";
+export { isBashParseError } from "./parser/is-bash-parse-error.js";
 export { parse } from "./parser/parser.js";
-export { BashParseError } from "./parser/parser-error.js";
 export type {
   CommandFinished as SandboxCommandFinished,
   OutputMessage,
