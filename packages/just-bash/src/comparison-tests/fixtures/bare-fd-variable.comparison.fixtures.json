@@ -1,8 +1,8 @@
 {
-  "4769ff2dbc3bf26b": {
-    "command": "{input}<<EOF\nvalue\nEOF\nprintf \"input=[%s]\\n\" \"$input\"",
+  "eedda2d51bc56241": {
+    "command": "{input}<<EOF 3<&$input\nvalue\nEOF\nprintf \"input=[%s] status=%s\\n\" \"$input\" \"$?\"",
     "files": {},
-    "stdout": "input=[]\n",
+    "stdout": "input=[] status=0\n",
     "stderr": "",
     "exitCode": 0,
     "locked": true

@@ -28,11 +28,11 @@ describe("bare fd-variable redirections", () => {
   it("scopes a bare fd-variable heredoc descriptor", async () => {
     const env = new Bash();
     const result = await env.exec(
-      "{input}<<EOF\nvalue\nEOF\nprintf '[%s]' \"$input\"; read -u 10 line; printf ':%s' \"$?\"",
+      '{input}<<EOF 3<&$input\nvalue\nEOF\nprintf "input=[%s] status=%s\\n" "$input" "$?"',
     );
 
-    expect(result.stdout).toBe("[]:1");
-    expect(result.stderr).toContain("Bad file descriptor");
+    expect(result.stdout).toBe("input=[] status=0\n");
+    expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
 });

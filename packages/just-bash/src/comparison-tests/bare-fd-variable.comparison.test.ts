@@ -41,7 +41,7 @@ describe("bare fd-variable redirections - GNU Bash Comparison", () => {
     await compareOutputs(
       env,
       testDirectory,
-      '{input}<<EOF\nvalue\nEOF\nprintf "input=[%s]\n" "$input"',
+      '{input}<<EOF 3<&$input\nvalue\nEOF\nprintf "input=[%s] status=%s\\n" "$input" "$?"',
     );
   });
 });
