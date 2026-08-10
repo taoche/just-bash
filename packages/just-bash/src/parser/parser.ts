@@ -1359,21 +1359,22 @@ export class Parser {
       this.skipNewlines();
 
       while (
-        !this.check(
-          TokenType.EOF,
-          TokenType.FI,
-          TokenType.ELSE,
-          TokenType.ELIF,
-          TokenType.THEN,
-          TokenType.DO,
-          TokenType.DONE,
-          TokenType.ESAC,
-          TokenType.RPAREN,
-          TokenType.RBRACE,
-          TokenType.DSEMI,
-          TokenType.SEMI_AND,
-          TokenType.SEMI_SEMI_AND,
-        ) &&
+        (this.currentTokenJoinsProcessSubstitution() ||
+          !this.check(
+            TokenType.EOF,
+            TokenType.FI,
+            TokenType.ELSE,
+            TokenType.ELIF,
+            TokenType.THEN,
+            TokenType.DO,
+            TokenType.DONE,
+            TokenType.ESAC,
+            TokenType.RPAREN,
+            TokenType.RBRACE,
+            TokenType.DSEMI,
+            TokenType.SEMI_AND,
+            TokenType.SEMI_SEMI_AND,
+          )) &&
         this.isCommandStart()
       ) {
         this.checkIterationLimit();

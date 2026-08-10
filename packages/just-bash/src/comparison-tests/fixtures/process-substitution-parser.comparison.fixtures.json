@@ -28,7 +28,8 @@
     "files": {},
     "stdout": "",
     "stderr": "/bin/bash: !/dev/fd/63: No such file or directory\n/bin/bash: time/dev/fd/63: No such file or directory\n/bin/bash: do/dev/fd/63: No such file or directory\n/bin/bash: fi/dev/fd/63: No such file or directory\n/bin/bash: else/dev/fd/63: No such file or directory\n",
-    "exitCode": 127
+    "exitCode": 127,
+    "locked": true
   },
   "21d5953366edac4a": {
     "command": "printf \"<%s>\\n\" }<(true) ]]<(true) {fd}>(true)",

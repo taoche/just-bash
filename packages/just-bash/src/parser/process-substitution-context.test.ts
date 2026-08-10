@@ -107,6 +107,19 @@ describe("process substitution parser contexts", () => {
     });
   });
 
+  it("keeps joined terminator words inside process substitution bodies", () => {
+    const outerCommand = asSimpleCommand("printf '%s\\n' <(do<(true))");
+    const outerProcess = asProcessSubstitution(outerCommand.args[1].parts[0]);
+    const innerCommand = outerProcess.body.statements[0].pipelines[0]
+      .commands[0] as SimpleCommandNode;
+    expect(innerCommand.name?.parts).toHaveLength(2);
+    expect(innerCommand.name?.parts[0]).toEqual({
+      type: "Literal",
+      value: "do",
+    });
+    asProcessSubstitution(innerCommand.name?.parts[1] as WordPart);
+  });
+
   it("preserves assignment expansion on adjacent suffixes", () => {
     const command = asSimpleCommand("x=<(true):~");
     const value = command.assignments[0].value;
