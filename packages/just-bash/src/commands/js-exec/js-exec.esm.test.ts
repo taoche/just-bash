@@ -143,6 +143,26 @@ describe("js-exec ESM modules", () => {
     expect(r3.exitCode).toBe(0);
   });
 
+  it(
+    "should time out unresolved top-level await",
+    { timeout: 30000 },
+    async () => {
+      const env = new Bash({
+        javascript: true,
+        executionLimits: { maxJsTimeoutMs: 200 },
+      });
+      const result = await env.exec(
+        `js-exec -m -c "await new Promise(() => {})"`,
+      );
+
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe(
+        "\njs-exec: execution timeout exceeded\njs-exec: Execution timeout: exceeded 200ms limit\n",
+      );
+      expect(result.exitCode).toBe(124);
+    },
+  );
+
   it("should handle transitive imports", async () => {
     const env = new Bash({
       javascript: true,

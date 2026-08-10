@@ -10,6 +10,7 @@
  */
 
 import { stripTypeScriptTypes } from "node:module";
+import { setTimeout } from "node:timers/promises";
 import { parentPort } from "node:worker_threads";
 import {
   getQuickJS,
@@ -1070,7 +1071,7 @@ async function initializeWithDefense(): Promise<void> {
   }
   // Yield to let the ExperimentalWarning flush through the event loop.
   // Must use setTimeout (not Promise.resolve) because the warning is a macrotask.
-  await new Promise<void>((r) => setTimeout(r, 0));
+  await setTimeout(0);
 
   // Activate defense after QuickJS is loaded.
   // QuickJS needs only SharedArrayBuffer + Atomics exclusions
@@ -1437,6 +1438,9 @@ async function executeCode(
       }
       if (moduleState?.type === "pending") {
         moduleState = context.getPromiseState(result.value);
+        if (pendingResult.value === 0 && moduleState.type === "pending") {
+          await setTimeout(0);
+        }
       } else {
         break;
       }
