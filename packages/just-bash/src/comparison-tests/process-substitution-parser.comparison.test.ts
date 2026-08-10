@@ -49,6 +49,24 @@ describe("Process Substitution Parser - GNU Bash Comparison", () => {
     );
   });
 
+  it("preserves non-special backslashes in double-quoted heredoc delimiters", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(
+      env,
+      testDir,
+      'cat <<"E\\OF"\ndouble-quote-backslash\nE\\OF',
+    );
+  });
+
+  it("keeps command substitution syntax literal in heredoc delimiters", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(
+      env,
+      testDir,
+      "cat <<EOF$(echo x)\ncommand-substitution-literal\nEOF$(echo x)",
+    );
+  });
+
   it("preserves assignment expansion after a substitution", async () => {
     const env = await setupFiles(testDir, {});
     await compareOutputs(

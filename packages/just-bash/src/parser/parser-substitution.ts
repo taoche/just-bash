@@ -155,6 +155,7 @@ export function readHeredocDelimiter(
 ): { delim: string; endPos: number } {
   let delim = "";
   let i = pos;
+  let substitutionDepth = 0;
   const isWordEnd = (c: string): boolean =>
     c === " " ||
     c === "\t" ||
@@ -183,7 +184,18 @@ export function readHeredocDelimiter(
       i++;
       while (i < value.length && value[i] !== '"') {
         if (value[i] === "\\" && i + 1 < value.length) {
-          i++;
+          const escaped = value[i + 1];
+          if (
+            escaped === "$" ||
+            escaped === "`" ||
+            escaped === '"' ||
+            escaped === "\\" ||
+            escaped === "\n"
+          ) {
+            i += 2;
+            if (escaped !== "\n") delim += escaped;
+            continue;
+          }
         }
         delim += value[i];
         i++;
@@ -193,12 +205,27 @@ export function readHeredocDelimiter(
       continue;
     }
     if (c === "\\" && i + 1 < value.length) {
-      delim += value[i + 1];
+      const escaped = value[i + 1];
+      if (escaped !== "\n") delim += escaped;
       i += 2;
       continue;
     }
-    if (isWordEnd(c)) {
+    if (
+      substitutionDepth === 0 &&
+      (c === "$" || c === "<" || c === ">") &&
+      value[i + 1] === "("
+    ) {
+      delim += `${c}(`;
+      substitutionDepth = 1;
+      i += 2;
+      continue;
+    }
+    if (substitutionDepth === 0 && isWordEnd(c)) {
       break;
+    }
+    if (substitutionDepth > 0) {
+      if (c === "(") substitutionDepth++;
+      else if (c === ")") substitutionDepth--;
     }
     delim += c;
     i++;

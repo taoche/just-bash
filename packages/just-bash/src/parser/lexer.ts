@@ -2017,7 +2017,7 @@ export class Lexer {
     let pos = start;
     let currentLine = line;
     let currentColumn = column;
-    let processDepth = 0;
+    let substitutionDepth = 0;
     let delimiter = "";
     let quoted = false;
 
@@ -2037,7 +2037,7 @@ export class Lexer {
       const char = input[pos];
 
       if (
-        processDepth === 0 &&
+        substitutionDepth === 0 &&
         (char === " " ||
           char === "\t" ||
           char === "\n" ||
@@ -2049,18 +2049,18 @@ export class Lexer {
       }
 
       if (
-        processDepth === 0 &&
-        (char === "<" || char === ">") &&
+        substitutionDepth === 0 &&
+        (char === "$" || char === "<" || char === ">") &&
         input[pos + 1] === "("
       ) {
         delimiter += advance();
         delimiter += advance();
-        processDepth = 1;
+        substitutionDepth = 1;
         continue;
       }
 
       if (
-        processDepth === 0 &&
+        substitutionDepth === 0 &&
         (char === "<" || char === ">" || char === "(" || char === ")")
       ) {
         break;
@@ -2071,8 +2071,19 @@ export class Lexer {
         const quote = advance();
         while (pos < input.length && input[pos] !== quote) {
           if (input[pos] === "\\" && quote === '"' && pos + 1 < input.length) {
-            quoted = true;
-            advance();
+            const escaped = input[pos + 1];
+            if (
+              escaped === "$" ||
+              escaped === "`" ||
+              escaped === '"' ||
+              escaped === "\\" ||
+              escaped === "\n"
+            ) {
+              advance();
+              const value = advance();
+              if (value !== "\n") delimiter += value;
+              continue;
+            }
           }
           delimiter += advance();
         }
@@ -2085,21 +2096,22 @@ export class Lexer {
       if (char === "\\" && pos + 1 < input.length) {
         quoted = true;
         advance();
-        delimiter += advance();
+        const value = advance();
+        if (value !== "\n") delimiter += value;
         continue;
       }
 
-      if (processDepth > 0) {
+      if (substitutionDepth > 0) {
         if (char === "(") {
-          processDepth += 1;
+          substitutionDepth += 1;
         } else if (char === ")") {
-          processDepth -= 1;
+          substitutionDepth -= 1;
         }
       }
       delimiter += advance();
     }
 
-    if (processDepth > 0) {
+    if (substitutionDepth > 0) {
       throw new LexerError(
         "unexpected EOF while looking for matching `)'",
         line,

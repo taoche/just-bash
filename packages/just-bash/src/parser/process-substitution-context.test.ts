@@ -91,6 +91,22 @@ describe("process substitution parser contexts", () => {
     });
   });
 
+  it("preserves non-special backslashes in double-quoted heredoc delimiters", () => {
+    const command = asSimpleCommand('cat <<"E\\OF"\nbody\nE\\OF\n');
+    expect(command.redirections[0].target).toMatchObject({
+      type: "HereDoc",
+      delimiter: "E\\OF",
+    });
+  });
+
+  it("keeps command substitution syntax literal in heredoc delimiters", () => {
+    const command = asSimpleCommand("cat <<EOF$(echo x)\nbody\nEOF$(echo x)\n");
+    expect(command.redirections[0].target).toMatchObject({
+      type: "HereDoc",
+      delimiter: "EOF$(echo x)",
+    });
+  });
+
   it("preserves assignment expansion on adjacent suffixes", () => {
     const command = asSimpleCommand("x=<(true):~");
     const value = command.assignments[0].value;

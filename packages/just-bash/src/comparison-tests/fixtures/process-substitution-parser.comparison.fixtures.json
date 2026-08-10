@@ -3,8 +3,9 @@
     "command": "||<(true); echo survived",
     "files": {},
     "stdout": "",
-    "stderr": "/bin/bash: -c: line 0: syntax error near unexpected token `||'\n/bin/bash: -c: line 0: `||<(true); echo survived'\n",
-    "exitCode": 2
+    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `||'\n/bin/bash: -c: line 1: `||<(true); echo survived'\n",
+    "exitCode": 2,
+    "locked": true
   },
   "098b591d54cc788e": {
     "command": "echo 2<(((1)))",
@@ -52,6 +53,13 @@
     "exitCode": 0,
     "locked": true
   },
+  "45a03bdfe288367d": {
+    "command": "cat <<EOF$(echo x)\ncommand-substitution-literal\nEOF$(echo x)",
+    "files": {},
+    "stdout": "command-substitution-literal\n",
+    "stderr": "",
+    "exitCode": 0
+  },
   "5b511c08d2ee319a": {
     "command": "true\ncat <(\necho outer=$LINENO\ncat <(echo inner=$LINENO)\n)",
     "files": {},
@@ -64,22 +72,25 @@
     "command": "cat << #comment\necho survived\n",
     "files": {},
     "stdout": "",
-    "stderr": "/bin/bash: -c: line 0: syntax error near unexpected token `newline'\n/bin/bash: -c: line 0: `cat << #comment'\n",
-    "exitCode": 2
+    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `newline'\n/bin/bash: -c: line 1: `cat << #comment'\n",
+    "exitCode": 2,
+    "locked": true
   },
   "748b421429feb494": {
     "command": "&&<(true); echo survived",
     "files": {},
     "stdout": "",
-    "stderr": "/bin/bash: -c: line 0: syntax error near unexpected token `&&'\n/bin/bash: -c: line 0: `&&<(true); echo survived'\n",
-    "exitCode": 2
+    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `&&'\n/bin/bash: -c: line 1: `&&<(true); echo survived'\n",
+    "exitCode": 2,
+    "locked": true
   },
   "8b1541a663b997a2": {
     "command": "&<(true); echo survived",
     "files": {},
     "stdout": "",
-    "stderr": "/bin/bash: -c: line 0: syntax error near unexpected token `&'\n/bin/bash: -c: line 0: `&<(true); echo survived'\n",
-    "exitCode": 2
+    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `&'\n/bin/bash: -c: line 1: `&<(true); echo survived'\n",
+    "exitCode": 2,
+    "locked": true
   },
   "cb58ddc4d2487347": {
     "command": "printf \"<%s>\\n\" <(true)x=y; x=<(true)y=z; printf \"<%s>\\n\" \"$x\"",
@@ -92,8 +103,16 @@
     "command": "cat <<#comment\necho survived\n",
     "files": {},
     "stdout": "",
-    "stderr": "/bin/bash: -c: line 0: syntax error near unexpected token `newline'\n/bin/bash: -c: line 0: `cat <<#comment'\n",
-    "exitCode": 2
+    "stderr": "/bin/bash: -c: line 1: syntax error near unexpected token `newline'\n/bin/bash: -c: line 1: `cat <<#comment'\n",
+    "exitCode": 2,
+    "locked": true
+  },
+  "e9c39f0e3f494adb": {
+    "command": "cat <<\"E\\OF\"\ndouble-quote-backslash\nE\\OF",
+    "files": {},
+    "stdout": "double-quote-backslash\n",
+    "stderr": "",
+    "exitCode": 0
   },
   "fcb395281ba741d1": {
     "command": "cat <<EOF<(echo hi)\nheredoc-ok\nEOF<(echo hi)",
