@@ -1406,12 +1406,17 @@ async function executeCode(
 
     // Execute pending jobs (promise callbacks, module bodies).
     // Must always run so .then() chains work in both script and module mode.
-    // Must happen before exit so bridge is still alive.
-    {
+    // Must happen before exit so bridge is still alive. Module evaluation can
+    // return a promise for top-level await, which must settle before completion.
+    let moduleState = input.isModule
+      ? context.getPromiseState(result.value)
+      : undefined;
+    do {
       const pendingResult = runtime.executePendingJobs();
       if ("error" in pendingResult && pendingResult.error) {
         const errorVal = context.dump(pendingResult.error);
         pendingResult.error.dispose();
+        result.value.dispose();
         const rawPendingMsg =
           typeof errorVal === "object" &&
           errorVal !== null &&
@@ -1430,6 +1435,38 @@ async function executeCode(
         }
         return { success: true };
       }
+      if (moduleState?.type === "pending") {
+        moduleState = context.getPromiseState(result.value);
+      } else {
+        break;
+      }
+    } while (moduleState?.type === "pending");
+
+    if (moduleState?.type === "rejected") {
+      const errorVal = context.dump(moduleState.error);
+      moduleState.error.dispose();
+      result.value.dispose();
+      const rawModuleMsg =
+        typeof errorVal === "object" &&
+        errorVal !== null &&
+        "message" in errorVal
+          ? (errorVal as { message: string }).message
+          : String(errorVal);
+      if (rawModuleMsg === "__EXIT__") {
+        return { success: true };
+      }
+      const errorMsg = formatError(errorVal);
+      try {
+        backend.writeStderr(`${errorMsg}\n`);
+      } catch {
+        // Output limit exceeded — ignore writeStderr failure
+      }
+      backend.exit(1);
+      return { success: true };
+    }
+
+    if (moduleState?.type === "fulfilled" && !moduleState.notAPromise) {
+      moduleState.value.dispose();
     }
 
     result.value.dispose();
