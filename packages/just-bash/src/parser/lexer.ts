@@ -2067,7 +2067,7 @@ export class Lexer {
       }
 
       if (char === "'" || char === '"') {
-        quoted = true;
+        if (substitutionDepth === 0) quoted = true;
         const quote = advance();
         while (pos < input.length && input[pos] !== quote) {
           if (input[pos] === "\\" && quote === '"' && pos + 1 < input.length) {
@@ -2094,7 +2094,7 @@ export class Lexer {
       }
 
       if (char === "\\" && pos + 1 < input.length) {
-        quoted = true;
+        if (substitutionDepth === 0) quoted = true;
         advance();
         const value = advance();
         if (value !== "\n") delimiter += value;

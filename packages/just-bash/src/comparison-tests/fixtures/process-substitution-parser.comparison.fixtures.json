@@ -61,6 +61,13 @@
     "stderr": "",
     "exitCode": 0
   },
+  "4a6e5e082e832858": {
+    "command": "HOME=/home/demo; cat <<EOF$(echo 'x')\n$HOME\nEOF$(echo x)",
+    "files": {},
+    "stdout": "/home/demo\n",
+    "stderr": "",
+    "exitCode": 0
+  },
   "5b511c08d2ee319a": {
     "command": "true\ncat <(\necho outer=$LINENO\ncat <(echo inner=$LINENO)\n)",
     "files": {},

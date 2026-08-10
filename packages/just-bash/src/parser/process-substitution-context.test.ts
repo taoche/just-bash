@@ -120,6 +120,19 @@ describe("process substitution parser contexts", () => {
     asProcessSubstitution(innerCommand.name?.parts[1] as WordPart);
   });
 
+  for (const delimiter of ["EOF$(echo 'x')", "EOF<(echo 'x')"]) {
+    it(`does not quote heredoc bodies from nested quotes in ${delimiter.slice(3, 5)}`, () => {
+      const command = asSimpleCommand(
+        `cat <<${delimiter}\n$HOME\n${delimiter.replace("'x'", "x")}\n`,
+      );
+      expect(command.redirections[0].target).toMatchObject({
+        type: "HereDoc",
+        delimiter: delimiter.replace("'x'", "x"),
+        quoted: false,
+      });
+    });
+  }
+
   it("preserves assignment expansion on adjacent suffixes", () => {
     const command = asSimpleCommand("x=<(true):~");
     const value = command.assignments[0].value;

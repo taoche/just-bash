@@ -67,6 +67,15 @@ describe("Process Substitution Parser - GNU Bash Comparison", () => {
     );
   });
 
+  it("does not quote heredoc bodies from nested substitution quotes", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(
+      env,
+      testDir,
+      "HOME=/home/demo; cat <<EOF$(echo 'x')\n$HOME\nEOF$(echo x)",
+    );
+  });
+
   it("preserves assignment expansion after a substitution", async () => {
     const env = await setupFiles(testDir, {});
     await compareOutputs(
