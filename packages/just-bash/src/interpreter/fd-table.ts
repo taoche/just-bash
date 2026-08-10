@@ -40,7 +40,8 @@ export type FdEntry =
   | { kind: "output"; path: string; append: boolean }
   | { kind: "readwrite"; path: string; position: number; content: string }
   | { kind: "dup-out"; sourceFd: number }
-  | { kind: "dup-in"; sourceFd: number };
+  | { kind: "dup-in"; sourceFd: number }
+  | { kind: "closed" };
 
 /**
  * A descriptor's raw value, whether it is known to hold content, and which
@@ -132,6 +133,8 @@ export function encodeFdEntry(entry: FdEntry): string {
       return `${DUP_OUT_PREFIX}${entry.sourceFd}`;
     case "dup-in":
       return `${DUP_IN_PREFIX}${entry.sourceFd}`;
+    case "closed":
+      throw new Error("Closed descriptors have no table encoding");
   }
 }
 
@@ -322,6 +325,8 @@ export function readFd(
       return { error: "write-only" };
     case "dup-in":
       return { error: "not-open" };
+    case "closed":
+      return { error: "not-open" };
   }
 }
 
@@ -368,18 +373,25 @@ export async function writeFdEntry(
     await ctx.fs.appendFile(entry.path, content, encoding);
     return true;
   }
-  if (entry.kind !== "readwrite") return false;
+  const liveEntry = descriptors
+    .map((fd) => getFdEntry(ctx, fd))
+    .find(
+      (candidate): candidate is Extract<FdEntry, { kind: "readwrite" }> =>
+        candidate?.kind === "readwrite",
+    );
+  const writeEntry = liveEntry ?? entry;
+  if (writeEntry.kind !== "readwrite") return false;
 
   const updatedContent =
-    entry.content.slice(0, entry.position) +
+    writeEntry.content.slice(0, writeEntry.position) +
     content +
-    entry.content.slice(entry.position + content.length);
+    writeEntry.content.slice(writeEntry.position + content.length);
   const updated: FdEntry = {
-    ...entry,
-    position: entry.position + content.length,
+    ...writeEntry,
+    position: writeEntry.position + content.length,
     content: updatedContent,
   };
-  await ctx.fs.writeFile(entry.path, updatedContent, encoding);
+  await ctx.fs.writeFile(writeEntry.path, updatedContent, encoding);
   const raw = encodeFdEntry(updated);
   for (const fd of descriptors) {
     if (isFdOpen(ctx, fd)) writeRawFd(ctx, fd, raw, false);

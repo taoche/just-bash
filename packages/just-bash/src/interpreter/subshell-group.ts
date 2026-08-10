@@ -24,6 +24,12 @@ import {
   ReturnError,
   SubshellExitError,
 } from "./errors.js";
+import {
+  advanceFd,
+  type FdEntry,
+  getFdAliasMembers,
+  getFdEntry,
+} from "./fd-table.js";
 import { getErrorMessage } from "./helpers/errors.js";
 import { failure, result } from "./helpers/result.js";
 import {
@@ -51,6 +57,11 @@ export async function executeSubshell(
   stdinOwned = false,
 ): Promise<ExecResult> {
   const parentLoopDepth = ctx.state.loopDepth;
+  const parentDescriptors = new Map<number, FdEntry>();
+  for (const fd of ctx.state.fileDescriptors?.keys() ?? []) {
+    const entry = getFdEntry(ctx, fd);
+    if (entry) parentDescriptors.set(fd, entry);
+  }
   const restoreState = beginIsolatedShellState(ctx.state);
   ctx.state.parentHasLoopContext = parentLoopDepth > 0;
   ctx.state.loopDepth = 0;
@@ -70,7 +81,28 @@ export async function executeSubshell(
         ),
     );
   } finally {
+    const consumedDescriptors = new Map<number, number>();
+    for (const [fd, parentEntry] of parentDescriptors) {
+      const childEntry = getFdEntry(ctx, fd);
+      const consumed =
+        parentEntry.kind === "input" && childEntry?.kind === "input"
+          ? parentEntry.content.length - childEntry.content.length
+          : parentEntry.kind === "readwrite" &&
+              childEntry?.kind === "readwrite" &&
+              parentEntry.path === childEntry.path
+            ? childEntry.position - parentEntry.position
+            : 0;
+      if (consumed <= 0) continue;
+      const sourceFd = Math.min(...getFdAliasMembers(ctx, fd));
+      consumedDescriptors.set(
+        sourceFd,
+        Math.max(consumedDescriptors.get(sourceFd) ?? 0, consumed),
+      );
+    }
     restoreState();
+    for (const [fd, consumed] of consumedDescriptors) {
+      advanceFd(ctx, fd, consumed);
+    }
   }
 }
 

@@ -35,6 +35,150 @@ describe("redirection transactions", () => {
     expect(await env.readFile("/tmp/all")).toBe("outerr");
   });
 
+  it("uses persistent fd 0 as later command input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec </tmp/in; read x; read y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("does not drain persistent fd 0 for non-reading commands", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec </tmp/in; echo ignored; true; :; read x; read y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("ignored\na:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("does not drain persistent fd 0 for external non-readers", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\nb\n' >/tmp/in; exec </tmp/in; pwd >/dev/null; read x; read y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("does not drain persistent fd 0 for external non-readers", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\nb\n' >/tmp/in; exec </tmp/in; pwd >/dev/null; read x; read y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("shares a persistent standard input alias with its source descriptor", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'ab' >/tmp/in; exec 3</tmp/in; exec 0<&3; read -n1 a; read -n1 -u3 b; printf '%s:%s' \"$a\" \"$b\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("reads temporary fd 0 duplications from their prepared route", async () => {
+    const env = new Bash();
+    const result = await env.exec("printf value >/tmp/in; cat </tmp/in <&0");
+
+    expect(result.stdout).toBe("value");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("advances a compound command's descriptor input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec 3</tmp/in; if read x; then printf '%s' \"$x\"; fi <&3; read -u3 y; printf ':%s' \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("advances a group command's descriptor input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec 3</tmp/in; { read x; } <&3; read -u3 y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe("a:b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("advances a subshell's descriptor input", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "printf 'a\\nb\\n' >/tmp/in; exec 3</tmp/in; (read x) <&3; read -u3 y; printf '%s:%s' \"$x\" \"$y\"",
+    );
+
+    expect(result.stdout).toBe(":b");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("keeps persistent closed stdout closed", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "exec 3>&1; exec 1>&-; echo hi; echo rc=$? >&3",
+    );
+
+    expect(result.stdout).toBe("rc=1\n");
+    expect(result.stderr).toBe(
+      "bash: echo: write error: Bad file descriptor\n",
+    );
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("rejects duplication from a persistent closed stdout", async () => {
+    const env = new Bash();
+    const result = await env.exec("exec 1>&-; : 3>&1; echo rc=$? >&2");
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("bash: 1: Bad file descriptor\nrc=1\n");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("closes a standard descriptor moved by persistent exec", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      "exec 3>&1; exec 1>&2-; printf err >&2; printf rc=$? >&3",
+    );
+
+    expect(result.stdout).toBe("rc=1");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("aborts when a redirection exceeds the descriptor limit", async () => {
+    const env = new Bash({ executionLimits: { maxFileDescriptors: 1 } });
+    const result = await env.exec(
+      "exec 3>/tmp/held; : 4>/tmp/excess; printf after",
+    );
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "bash: too many open file descriptors (max 1)\n",
+    );
+    expect(result.exitCode).toBe(126);
+    await expect(env.readFile("/tmp/excess")).rejects.toThrow();
+  });
+
   it("preserves a named fd-variable allocation through ReturnError", async () => {
     const env = new Bash();
     const result = await env.exec(

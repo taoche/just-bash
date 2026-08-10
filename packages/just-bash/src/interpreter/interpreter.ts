@@ -113,6 +113,10 @@ import type {
   InterpreterState,
 } from "./types.js";
 
+function unsupportedCommandNode(node: never): never {
+  throw new TypeError(`Unsupported command node: ${JSON.stringify(node)}`);
+}
+
 export type { InterpreterContext, InterpreterState } from "./types.js";
 
 export interface InterpreterOptions {
@@ -540,7 +544,7 @@ export class Interpreter {
     const procSubMark = markProcessSubstitutions(this.ctx);
     let result: ExecResult;
     try {
-      result = await this.executeCommandInner(node, stdin);
+      result = await this.executeCommandInner(node, stdin, stdinOwned);
     } catch (error) {
       await releaseProcessSubstitutions(this.ctx, procSubMark).catch(
         () => undefined,
@@ -564,6 +568,7 @@ export class Interpreter {
   private async executeCommandInner(
     node: CommandNode,
     stdin: string,
+    stdinOwned: boolean,
   ): Promise<ExecResult> {
     this.assertDefenseContext("command");
 
@@ -594,7 +599,7 @@ export class Interpreter {
       case "ConditionalCommand":
         return this.executeConditionalCommand(node);
       default:
-        return OK;
+        return unsupportedCommandNode(node);
     }
   }
 
@@ -608,7 +613,7 @@ export class Interpreter {
         transaction = created;
       });
     } catch (error) {
-      transaction?.finish("throw");
+      transaction?.finish();
       if (error instanceof GlobError) {
         // GlobError from failglob should return exit code 1 with error message
         return failure(error.stderr);
@@ -691,13 +696,13 @@ export class Interpreter {
         if (preparedRedirections.error) {
           restoreTempAssignments();
           if (!preparedRedirections.errorCause) {
-            transaction.finish("success");
+            transaction.finish();
             return preparedRedirections.error;
           }
           try {
             return preparedRedirectionError(preparedRedirections);
           } finally {
-            transaction.finish("throw");
+            transaction.finish();
           }
         }
         const baseResult = result("", xtraceAssignmentOutput, 0);
@@ -709,7 +714,7 @@ export class Interpreter {
           preparedRedirections.dupSources,
           preparedRedirections.standardRoutes,
         );
-        transaction.finish("success");
+        transaction.finish();
         return redirected;
       }
 
@@ -848,7 +853,7 @@ export class Interpreter {
     if (preparedRedirections.error) {
       restoreTempAssignments();
       if (!preparedRedirections.errorCause) {
-        transaction.finish("success");
+        transaction.finish();
         return preparedRedirections.error;
       }
       return preparedRedirectionError(preparedRedirections);
@@ -871,11 +876,11 @@ export class Interpreter {
       if (commandIsOnlyExpansions) {
         // No args - treat as no-op (status 0)
         // Preserve lastExitCode for command subs like $(exit 42)
-        transaction.finish("success");
+        transaction.finish();
         return result("", "", this.ctx.state.lastExitCode);
       }
       // Literal empty command name - command not found
-      transaction.finish("success");
+      transaction.finish();
       return failure("bash: : command not found\n", 127);
     }
 
@@ -895,7 +900,7 @@ export class Interpreter {
           this.ctx.state.tempExportedVars.delete(name);
         }
       }
-      transaction.finish("success");
+      transaction.finish();
       return OK;
     }
 
@@ -942,12 +947,10 @@ export class Interpreter {
       }
     }
 
-    // A command fed from `<&N` has drained that descriptor: reading is
-    // consuming, so the next reader of N continues after what this command
-    // took. `read` is the exception — it reports exactly how far it got and
-    // advances N itself (see the read builtin's consumeInput).
+    // Commands without stdin access leave descriptor input untouched. `read`
+    // advances its source exactly in consumeInput.
     if (stdinSourceFd >= 0 && commandName !== "read") {
-      advanceFd(this.ctx, stdinSourceFd, stdin.length);
+      advanceFd(this.ctx, stdinSourceFd, cmdResult.internalStdinConsumed ?? 0);
     }
 
     // Prepend xtrace output and any assignment warnings to stderr
@@ -971,7 +974,7 @@ export class Interpreter {
       cmdResult.internalProducerCommand ?? commandName,
       cmdResult.internalProducerOmitsShellPrefix,
     );
-    transaction.finish("success");
+    transaction.finish();
 
     // If we caught a break/continue error, re-throw it after applying redirections
     if (controlFlowError) {
