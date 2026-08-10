@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Bash } from "../Bash.js";
 
-describe("bare fd-variable redirections", () => {
-  it("creates the target but unsets and closes the allocated descriptor", async () => {
+describe("fd-variable redirections", () => {
+  it("creates a bare target but unsets and closes the descriptor", async () => {
     const env = new Bash();
     const result = await env.exec(
       '{output}>/tmp/out; printf "[%s]" "$output"; printf closed >&10; printf ":%s" "$?"',
@@ -14,7 +14,7 @@ describe("bare fd-variable redirections", () => {
     expect(await env.readFile("/tmp/out")).toBe("");
   });
 
-  it("makes fd 10 reusable by the next named allocation", async () => {
+  it("makes a bare descriptor reusable by the next allocation", async () => {
     const env = new Bash();
     const result = await env.exec(
       '{bare}>/tmp/bare; : {named}>/tmp/named; printf "%s" "$named"',
@@ -25,13 +25,24 @@ describe("bare fd-variable redirections", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("scopes a bare fd-variable heredoc descriptor", async () => {
+  it("scopes a bare heredoc descriptor", async () => {
     const env = new Bash();
     const result = await env.exec(
       '{input}<<EOF 3<&$input\nvalue\nEOF\nprintf "input=[%s] status=%s\\n" "$input" "$?"',
     );
 
     expect(result.stdout).toBe("input=[] status=0\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("keeps a named-command heredoc descriptor available", async () => {
+    const env = new Bash();
+    const result = await env.exec(
+      ': {input}<<EOF\nvalue\nEOF\nread -u "$input" line; printf "input=%s fd=%s\\n" "$line" "$input"',
+    );
+
+    expect(result.stdout).toBe("input=value fd=10\n");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });

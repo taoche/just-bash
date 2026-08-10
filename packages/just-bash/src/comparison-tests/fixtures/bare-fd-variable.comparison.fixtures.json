@@ -15,6 +15,14 @@
     "exitCode": 0,
     "locked": true
   },
+  "a89fda6dfa2d2453": {
+    "command": ": {input}<<EOF\nvalue\nEOF\nread -u \"$input\" line; printf \"input=%s fd=%s\\n\" \"$line\" \"$input\"",
+    "files": {},
+    "stdout": "input=value fd=10\n",
+    "stderr": "",
+    "exitCode": 0,
+    "locked": true
+  },
   "b02b896b964e8a40": {
     "command": "{bare}>bare.txt; : {named}>named.txt; printf \"bare=[%s] named=%s\\n\" \"$bare\" \"$named\"",
     "files": {},

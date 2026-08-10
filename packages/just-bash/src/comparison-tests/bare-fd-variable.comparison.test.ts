@@ -44,4 +44,13 @@ describe("bare fd-variable redirections - GNU Bash Comparison", () => {
       '{input}<<EOF 3<&$input\nvalue\nEOF\nprintf "input=[%s] status=%s\\n" "$input" "$?"',
     );
   });
+
+  it("keeps a named-command heredoc descriptor available", async () => {
+    const env = await setupFiles(testDirectory, {});
+    await compareOutputs(
+      env,
+      testDirectory,
+      ': {input}<<EOF\nvalue\nEOF\nread -u "$input" line; printf "input=%s fd=%s\\n" "$line" "$input"',
+    );
+  });
 });
