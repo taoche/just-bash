@@ -176,21 +176,6 @@ export function parseSimpleCommand(p: Parser): SimpleCommandNode {
 
     if (isRedirection(p)) {
       redirections.push(parseRedirection(p));
-    } else if (p.isWord()) {
-      args.push(p.parseWord());
-    } else if (p.check(TokenType.RBRACE)) {
-      // } can be an argument like "echo }" - parse it as a word
-      const token = p.advance();
-      args.push(p.parseWordFromString(token.value, false, false));
-    } else if (p.check(TokenType.LBRACE)) {
-      // { can be an argument like "type -t {" - parse it as a word
-      const token = p.advance();
-      args.push(p.parseWordFromString(token.value, false, false));
-    } else if (p.check(TokenType.DBRACK_END)) {
-      // ]] can be an argument when [[ is parsed as a regular command
-      // (e.g., FOO=bar [[ foo == foo ]] where [[ is not recognized as keyword)
-      const token = p.advance();
-      args.push(p.parseWordFromString(token.value, false, false));
     } else if (p.check(TokenType.ASSIGNMENT_WORD)) {
       // Assignment words after command name are treated as arguments
       // (for local, export, declare, etc.)
@@ -234,6 +219,21 @@ export function parseSimpleCommand(p: Parser): SimpleCommandNode {
           ),
         );
       }
+    } else if (p.isWord()) {
+      args.push(p.parseWord());
+    } else if (p.check(TokenType.RBRACE)) {
+      // } can be an argument like "echo }" - parse it as a word
+      const token = p.advance();
+      args.push(p.parseWordFromString(token.value, false, false));
+    } else if (p.check(TokenType.LBRACE)) {
+      // { can be an argument like "type -t {" - parse it as a word
+      const token = p.advance();
+      args.push(p.parseWordFromString(token.value, false, false));
+    } else if (p.check(TokenType.DBRACK_END)) {
+      // ]] can be an argument when [[ is parsed as a regular command
+      // (e.g., FOO=bar [[ foo == foo ]] where [[ is not recognized as keyword)
+      const token = p.advance();
+      args.push(p.parseWordFromString(token.value, false, false));
     } else if (p.check(TokenType.LPAREN)) {
       // Bare ( in argument position is a syntax error (e.g., "echo a(b)")
       p.error(`syntax error near unexpected token \`('`);

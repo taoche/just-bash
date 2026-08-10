@@ -133,6 +133,34 @@ describe("process substitution parser contexts", () => {
     });
   }
 
+  it("preserves literal tildes after preceding process substitution parts", () => {
+    const command = asSimpleCommand("printf '<%s>\\n' <(true)~");
+    expect(command.args[1].parts).toHaveLength(2);
+    asProcessSubstitution(command.args[1].parts[0]);
+    expect(command.args[1].parts[1]).toEqual({
+      type: "Literal",
+      value: "~",
+    });
+  });
+
+  it("preserves assignment expansion for joined assignment arguments", () => {
+    const command = asSimpleCommand("printf '<%s>\\n' x=<(true):~");
+    expect(command.args[1].parts).toHaveLength(4);
+    expect(command.args[1].parts[0]).toEqual({
+      type: "Literal",
+      value: "x=",
+    });
+    asProcessSubstitution(command.args[1].parts[1]);
+    expect(command.args[1].parts[2]).toEqual({
+      type: "Literal",
+      value: ":",
+    });
+    expect(command.args[1].parts[3]).toEqual({
+      type: "TildeExpansion",
+      user: null,
+    });
+  });
+
   it("preserves assignment expansion on adjacent suffixes", () => {
     const command = asSimpleCommand("x=<(true):~");
     const value = command.assignments[0].value;

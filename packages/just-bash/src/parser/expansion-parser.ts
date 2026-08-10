@@ -850,6 +850,8 @@ export function parseWordParts(
   regexPattern = false,
   /** When true, \} is treated as escaped } (used in parameter expansion default values) */
   inParameterExpansion = false,
+  /** Whether this token starts the complete shell word. */
+  atWordStart = true,
 ): WordPart[] {
   if (singleQuoted) {
     // Single quotes: no expansion
@@ -1020,7 +1022,7 @@ export function parseWordParts(
     if (char === "~") {
       const prevChar = i > 0 ? value[i - 1] : "";
       const canExpandAfterColon = isAssignment && prevChar === ":";
-      if (i === 0 || prevChar === "=" || canExpandAfterColon) {
+      if ((i === 0 && atWordStart) || prevChar === "=" || canExpandAfterColon) {
         const tildeEnd = WordParser.findTildeEnd(p, value, i);
         const afterTilde = value[tildeEnd];
         if (

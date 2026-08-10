@@ -926,7 +926,9 @@ export class Parser {
       }
 
       const token = this.advance();
-      parts.push(...this.parseWordToken(token, context).parts);
+      parts.push(
+        ...this.parseWordToken(token, context, parts.length === 0).parts,
+      );
       previousEnd = token.end;
     }
 
@@ -953,7 +955,11 @@ export class Parser {
     );
   }
 
-  private parseWordToken(token: Token, context: WordParseContext): WordNode {
+  private parseWordToken(
+    token: Token,
+    context: WordParseContext,
+    atWordStart = true,
+  ): WordNode {
     if ((context & WordParseContext.HeredocDelimiter) !== 0) {
       return AST.word([AST.literal(token.heredocDelimiter ?? token.value)]);
     }
@@ -982,6 +988,7 @@ export class Parser {
       false,
       (context & WordParseContext.NoBraceExpansion) !== 0,
       (context & WordParseContext.Regex) !== 0,
+      atWordStart,
     );
   }
 
@@ -993,6 +1000,7 @@ export class Parser {
     hereDoc = false,
     noBraceExpansion = false,
     regexPattern = false,
+    atWordStart = true,
   ): WordNode {
     const parts = ExpParser.parseWordParts(
       this,
@@ -1004,6 +1012,8 @@ export class Parser {
       false, // singleQuotesAreLiteral
       noBraceExpansion,
       regexPattern,
+      false,
+      atWordStart,
     );
     return AST.word(parts);
   }
