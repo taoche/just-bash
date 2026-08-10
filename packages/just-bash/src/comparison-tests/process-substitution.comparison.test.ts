@@ -133,7 +133,7 @@ describe("Process Substitution - Real Bash Comparison", () => {
     await compareOutputs(
       env,
       testDir,
-      "cat <(case x in (x) echo case-ok;; esac)",
+      "cat <(case x in x) echo case-ok;; esac)",
     );
   });
 

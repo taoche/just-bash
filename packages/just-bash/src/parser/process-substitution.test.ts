@@ -157,15 +157,6 @@ describe("process substitution - parser", () => {
     expect(serialize(outer.body)).toBe("cat <(echo deep)");
   });
 
-  it("preserves the lexical closing parenthesis around case patterns", () => {
-    expect(() =>
-      new Parser().parse("cat <(case x in x) echo body;; esac)"),
-    ).toThrow("unexpected end of process substitution");
-    expect(() =>
-      new Parser().parse("cat <(case x in (x) echo body;; esac)"),
-    ).not.toThrow();
-  });
-
   it("concatenates a literal prefix with the substitution", () => {
     const parts = argParts("echo a<(echo hi)")[0];
     expect(parts).toHaveLength(2);

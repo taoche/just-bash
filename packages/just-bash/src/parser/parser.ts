@@ -75,7 +75,6 @@ type ProcessLineState = {
 export class Parser {
   private tokens: Token[] = [];
   private pos = 0;
-  private processSubstitutionEnds: number[] = [];
   private pendingHeredocs: {
     redirect: RedirectionNode;
     delimiter: string;
@@ -158,7 +157,6 @@ export class Parser {
 
       this.pos = 0;
       this.pendingHeredocs = [];
-      this.processSubstitutionEnds = [];
       this.parseBudget.chargeTokens(this.tokens.length);
       return this.parseScript();
     } finally {
@@ -176,7 +174,6 @@ export class Parser {
       this.tokens = tokens;
       this.pos = 0;
       this.pendingHeredocs = [];
-      this.processSubstitutionEnds = [];
       this.processLineState = undefined;
       this.parseBudget.chargeTokens(tokens.length);
       return this.parseScript();
@@ -200,12 +197,6 @@ export class Parser {
   }
 
   advance(): Token {
-    if (
-      this.processSubstitutionEnds[this.processSubstitutionEnds.length - 1] ===
-      this.pos
-    ) {
-      this.error("unexpected end of process substitution");
-    }
     const token = this.current();
     if (this.pos < this.tokens.length - 1) {
       this.pos++;
@@ -985,11 +976,6 @@ export class Parser {
   private parseProcessSubstitution(): WordPart {
     const operator = this.advance();
     this.expect(TokenType.LPAREN);
-    const end = this.findProcessSubstitutionEnd();
-    if (end === -1) {
-      this.error("unexpected EOF while looking for matching `)'");
-    }
-    this.processSubstitutionEnds.push(end);
     const previousProcessLineState = this.processLineState;
     const logicalLine = this.getSourceLine(operator);
     this.processLineState = {
@@ -1000,7 +986,6 @@ export class Parser {
       body = AST.script(this.parseCompoundList());
     } finally {
       this.processLineState = previousProcessLineState;
-      this.processSubstitutionEnds.pop();
     }
     if (this.check(TokenType.EOF)) {
       this.error("unexpected EOF while looking for matching `)'");
@@ -1010,20 +995,6 @@ export class Parser {
       body,
       operator.type === TokenType.LESS ? "input" : "output",
     );
-  }
-
-  private findProcessSubstitutionEnd(): number {
-    let depth = 1;
-    for (let index = this.pos; index < this.tokens.length; index++) {
-      const type = this.tokens[index].type;
-      if (type === TokenType.LPAREN || type === TokenType.DPAREN_START) {
-        depth++;
-      } else if (type === TokenType.RPAREN || type === TokenType.DPAREN_END) {
-        depth--;
-        if (depth === 0) return index;
-      }
-    }
-    return -1;
   }
 
   parseBacktickSubstitution(
