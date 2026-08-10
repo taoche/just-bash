@@ -1,4 +1,4 @@
-# just-bash monorepo
+# just-bash
 
 This repository hosts the [`just-bash`](./packages/just-bash) package and its examples.
 
