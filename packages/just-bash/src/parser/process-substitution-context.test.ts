@@ -157,6 +157,37 @@ describe("process substitution parser contexts", () => {
     expect(value.parts[2]).toEqual({ type: "TildeExpansion", user: null });
   });
 
+  it("parses process substitutions inside parameter-expansion operands", () => {
+    const value = asSimpleCommand("p=${x:-<(printf ok)}").assignments[0].value;
+    if (!value) throw new Error("expected an assignment value");
+    const parameter = value.parts[0];
+    if (parameter.type !== "ParameterExpansion") {
+      throw new Error("expected a parameter expansion");
+    }
+    if (parameter.operation?.type !== "DefaultValue") {
+      throw new Error("expected a default-value operation");
+    }
+    asProcessSubstitution(parameter.operation.word.parts[0]);
+  });
+
+  it("keeps process syntax literal in double-quoted parameter operands", () => {
+    const value = asSimpleCommand('p="${x:-<(printf ok)}"').assignments[0]
+      .value;
+    if (!value || value.parts[0].type !== "DoubleQuoted") {
+      throw new Error("expected a double-quoted value");
+    }
+    const parameter = value.parts[0].parts[0];
+    if (parameter.type !== "ParameterExpansion") {
+      throw new Error("expected a parameter expansion");
+    }
+    if (parameter.operation?.type !== "DefaultValue") {
+      throw new Error("expected a default-value operation");
+    }
+    expect(parameter.operation.word.parts).toEqual([
+      { type: "Literal", value: "<(printf ok)" },
+    ]);
+  });
+
   it("owns LINENO relative to each process body", () => {
     const ast = new Parser().parse(`true
 cat <(

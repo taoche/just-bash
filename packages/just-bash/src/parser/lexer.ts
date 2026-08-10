@@ -1419,7 +1419,22 @@ export class Lexer {
               while (input[p] === " " || input[p] === "\t") {
                 p++;
               }
-              const { delim, endPos } = readHeredocDelimiter(input, p);
+              const { delim, endPos, unclosedQuote, unclosedSubstitution } =
+                readHeredocDelimiter(input, p);
+              if (unclosedQuote) {
+                throw new LexerError(
+                  `unexpected EOF while looking for matching \`${unclosedQuote}'`,
+                  ln,
+                  col,
+                );
+              }
+              if (unclosedSubstitution) {
+                throw new LexerError(
+                  "unexpected EOF while looking for matching `)'",
+                  ln,
+                  col,
+                );
+              }
               if (delim.length > 0) {
                 // The first `<` was already appended at the top of the loop;
                 // append the rest through the delimiter and advance past all of
@@ -2006,8 +2021,16 @@ export class Lexer {
       delim: delimiter,
       endPos,
       quoted,
+      unclosedQuote,
       unclosedSubstitution,
     } = readHeredocDelimiter(input, start);
+    if (unclosedQuote) {
+      throw new LexerError(
+        `unexpected EOF while looking for matching \`${unclosedQuote}'`,
+        line,
+        column,
+      );
+    }
     if (unclosedSubstitution) {
       throw new LexerError(
         "unexpected EOF while looking for matching `)'",

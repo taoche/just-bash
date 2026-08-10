@@ -8,6 +8,7 @@
 import {
   AST,
   type CommandSubstitutionPart,
+  type ProcessSubstitutionPart,
   type ScriptNode,
 } from "../ast/types.js";
 
@@ -157,12 +158,14 @@ export function readHeredocDelimiter(
   delim: string;
   endPos: number;
   quoted: boolean;
+  unclosedQuote: "'" | '"' | undefined;
   unclosedSubstitution: boolean;
 } {
   let delim = "";
   let i = pos;
   let substitutionDepth = 0;
   let quoted = false;
+  let unclosedQuote: "'" | '"' | undefined;
   const isWordEnd = (c: string): boolean =>
     c === " " ||
     c === "\t" ||
@@ -190,6 +193,8 @@ export function readHeredocDelimiter(
       if (i < value.length) {
         if (nested) delim += value[i];
         i++;
+      } else {
+        unclosedQuote = c;
       }
       continue;
     }
@@ -225,6 +230,8 @@ export function readHeredocDelimiter(
       if (i < value.length) {
         if (nested) delim += value[i];
         i++;
+      } else {
+        unclosedQuote = c;
       }
       continue;
     }
@@ -264,6 +271,7 @@ export function readHeredocDelimiter(
     delim,
     endPos: i,
     quoted,
+    unclosedQuote,
     unclosedSubstitution: substitutionDepth > 0,
   };
 }
@@ -389,7 +397,16 @@ function findSubstitutionBodyEnd(
         while (value[p] === " " || value[p] === "\t") {
           p++;
         }
-        const { delim, endPos } = readHeredocDelimiter(value, p);
+        const { delim, endPos, unclosedQuote, unclosedSubstitution } =
+          readHeredocDelimiter(value, p);
+        if (unclosedQuote) {
+          error(
+            `unexpected EOF while looking for matching \`${unclosedQuote}'`,
+          );
+        }
+        if (unclosedSubstitution) {
+          error("unexpected EOF while looking for matching `)'");
+        }
         if (delim.length > 0) {
           pendingHeredocs.push({ delim, stripTabs });
           wordBuffer = "";
@@ -495,6 +512,24 @@ export function parseCommandSubstitutionFromString(
   return {
     part: AST.commandSubstitution(body, false),
     endIndex: i + 1,
+  };
+}
+
+/** Parse process substitution syntax found inside a recursively parsed word fragment. */
+export function parseProcessSubstitutionFromString(
+  value: string,
+  start: number,
+  createParser: ParserFactory,
+  error: ErrorFn,
+): { part: ProcessSubstitutionPart; endIndex: number } {
+  const direction = value[start] === "<" ? "input" : "output";
+  const bodyStart = start + 2;
+  const bodyEnd = findSubstitutionBodyEnd(value, bodyStart, error);
+  const body = createParser().parse(value.slice(bodyStart, bodyEnd));
+
+  return {
+    part: AST.processSubstitution(body, direction),
+    endIndex: bodyEnd + 1,
   };
 }
 

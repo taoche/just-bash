@@ -1018,6 +1018,21 @@ export function parseWordParts(
       continue;
     }
 
+    // Parameter-expansion operands and other recursively parsed fragments stay
+    // inside one lexer token, so process substitutions in them need this string seam.
+    if (
+      (char === "<" || char === ">") &&
+      value[i + 1] === "(" &&
+      !hereDoc &&
+      !singleQuotesAreLiteral
+    ) {
+      flushLiteral();
+      const { part, endIndex } = p.parseProcessSubstitutionFromString(value, i);
+      parts.push(part);
+      i = endIndex;
+      continue;
+    }
+
     // Handle tilde expansion
     if (char === "~") {
       const prevChar = i > 0 ? value[i - 1] : "";

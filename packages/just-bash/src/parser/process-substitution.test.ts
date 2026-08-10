@@ -277,6 +277,12 @@ describe("process substitution - parser", () => {
     );
   });
 
+  it("rejects an unterminated quoted heredoc delimiter", () => {
+    expect(() => new Parser().parse('cat <<"EOF\nbody\nEOF')).toThrow(
+      "unexpected EOF while looking for matching",
+    );
+  });
+
   it("recognizes a comment after a heredoc operator", () => {
     for (const script of [
       "cat << #comment\necho survived\n",

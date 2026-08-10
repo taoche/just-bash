@@ -69,10 +69,24 @@
     "exitCode": 2,
     "locked": true
   },
+  "c3e39b3e53089a4e": {
+    "command": "unset x; printf '<%s>\\n' \"${x:-<(printf ok)}\"",
+    "files": {},
+    "stdout": "<<(printf ok)>\n",
+    "stderr": "",
+    "exitCode": 0
+  },
   "cb58ddc4d2487347": {
     "command": "printf \"<%s>\\n\" <(true)x=y; x=<(true)y=z; printf \"<%s>\\n\" \"$x\"",
     "files": {},
     "stdout": "</dev/fd/63x=y>\n</dev/fd/63y=z>\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  "cfcdb11968267ae6": {
+    "command": "unset x; cat ${x:-<(printf ok)}",
+    "files": {},
+    "stdout": "ok",
     "stderr": "",
     "exitCode": 0
   },

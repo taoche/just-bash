@@ -85,6 +85,20 @@ describe("Process Substitution Parser - GNU Bash Comparison", () => {
     );
   });
 
+  it("parses process substitutions in unquoted parameter operands", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(env, testDir, "unset x; cat ${x:-<(printf ok)}");
+  });
+
+  it("keeps process syntax literal in quoted parameter operands", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(
+      env,
+      testDir,
+      "unset x; printf '<%s>\\n' \"${x:-<(printf ok)}\"",
+    );
+  });
+
   it("keeps assignment-shaped suffixes in their shell word", async () => {
     const env = await setupFiles(testDir, {});
     await compareOutputs(
