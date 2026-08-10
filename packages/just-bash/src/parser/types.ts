@@ -5,6 +5,7 @@
  */
 
 import { type Token, TokenType } from "./lexer.js";
+import { BashParseError } from "./parser-error.js";
 
 // Parser limits to prevent hangs and resource exhaustion
 export const MAX_INPUT_SIZE = 1_000_000; // 1MB max input
@@ -71,7 +72,7 @@ export interface ParseError {
   token?: Token;
 }
 
-export class ParseException extends Error {
+export class ParseException extends BashParseError {
   constructor(
     message: string,
     public line: number,

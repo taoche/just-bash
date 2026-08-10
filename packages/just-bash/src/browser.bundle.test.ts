@@ -18,6 +18,11 @@ const browserBundlePath = resolve(__dirname, "../dist/bundle/browser.js");
 
 describe("browser bundle safety", () => {
   describe("bundle contents", () => {
+    it("should export parser errors", async () => {
+      const browserBundle = await import(browserBundlePath);
+      expect(browserBundle.BashParseError).toBeDefined();
+    });
+
     it("should not contain sql.js imports", () => {
       const bundleContent = readFileSync(browserBundlePath, "utf-8");
       expect(bundleContent).not.toContain("sql.js");

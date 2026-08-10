@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  BashParseError,
   type Command,
   type CommandContext,
   createCommandContext,
   EMPTY_BYTES,
   InMemoryFs,
+  parse,
 } from "./index.js";
 
 describe("public API source compatibility", () => {
@@ -34,5 +36,10 @@ describe("public API source compatibility", () => {
     });
     expect("limits" in context).toBe(false);
     expect(dispatched.limits.maxOutputSize).toBeGreaterThan(0);
+  });
+
+  it("exports one base class for parser and lexer failures", () => {
+    expect(() => parse("fi")).toThrow(BashParseError);
+    expect(() => parse('echo "unterminated')).toThrow(BashParseError);
   });
 });

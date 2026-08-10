@@ -10,6 +10,7 @@
  * - Escape sequences
  */
 
+import { BashParseError } from "./parser-error.js";
 import { readHeredocDelimiter } from "./parser-substitution.js";
 
 // Default max heredoc size to prevent memory exhaustion (10MB)
@@ -118,7 +119,7 @@ export interface Token {
 /**
  * Error thrown when the lexer encounters invalid input
  */
-export class LexerError extends Error {
+export class LexerError extends BashParseError {
   constructor(
     message: string,
     public line: number,
