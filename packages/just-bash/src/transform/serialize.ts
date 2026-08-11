@@ -375,12 +375,14 @@ function serializeRedirection(node: RedirectionNode): string {
 
   if (node.operator === "<<" || node.operator === "<<-") {
     const heredoc = node.target as HereDocNode;
+    if (heredoc.terminated === false) {
+      throw new Error("Cannot serialize an unterminated here-document");
+    }
     const delimStr = heredoc.quoted
       ? `'${heredoc.delimiter}'`
       : heredoc.delimiter;
     const content = serializeHeredocContent(heredoc.content, heredoc.quoted);
-    const terminator = heredoc.terminated === false ? "" : heredoc.delimiter;
-    return `${fdStr}${node.operator}${delimStr}\n${content}${terminator}`;
+    return `${fdStr}${node.operator}${delimStr}\n${content}${heredoc.delimiter}`;
   }
 
   if (node.operator === "<<<") {

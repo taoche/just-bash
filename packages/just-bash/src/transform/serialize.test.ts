@@ -415,13 +415,12 @@ describe("serialize", () => {
     it("heredoc with tabs", () => roundTrip("cat <<EOF\n\ttabbed\nEOF"));
     it("heredoc fed to command", () =>
       roundTrip("grep pattern <<EOF\nfoo pattern bar\nEOF"));
-    it("unterminated heredoc", () => {
-      const source = "cat <<EOF\nbody";
-      expect(serialize(parse(source))).toBe("cat <<EOF\nbody\n");
-      roundTrip(source);
-    });
-    it("unterminated empty heredoc", () => {
-      expect(serialize(parse("cat <<EOF"))).toBe("cat <<EOF\n");
+    it("rejects unterminated heredocs", () => {
+      for (const source of ["cat <<EOF\nbody", "cat <<EOF", "cat <<A <<B"]) {
+        expect(() => serialize(parse(source))).toThrow(
+          "Cannot serialize an unterminated here-document",
+        );
+      }
     });
     it("legacy heredoc without termination evidence", () => {
       const source = "cat <<EOF\nbody\nEOF";
