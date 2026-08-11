@@ -616,7 +616,9 @@ export class Interpreter {
       transaction?.finish();
       if (error instanceof GlobError) {
         // GlobError from failglob should return exit code 1 with error message
-        return failure(error.stderr);
+        const stderr = (this.ctx.state.expansionStderr || "") + error.stderr;
+        this.ctx.state.expansionStderr = "";
+        return failure(stderr);
       }
       // ArithmeticError in expansion (e.g., echo $((42x))) should terminate the script
       // Let the error propagate - it will be caught by the top-level error handler

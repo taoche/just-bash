@@ -187,6 +187,9 @@ function serializeWordPart(part: WordPart, inDoubleQuotes: boolean): string {
     case "TildeExpansion":
       return part.user !== null ? `~${part.user}` : "~";
     case "Glob":
+      if (part.extglob) {
+        return `${part.extglob.operator}(${part.extglob.alternatives.map(serializeWord).join("|")})`;
+      }
       return part.pattern;
     default: {
       const _exhaustive: never = part;

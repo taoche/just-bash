@@ -905,9 +905,16 @@ async function handleFinalGlobExpansion(
   ) => Promise<string>,
 ): Promise<{ values: string[]; quoted: boolean }> {
   const hasGlobParts = wordParts.some((p) => p.type === "Glob");
+  const structuredGlobPattern = wordParts.some(
+    (part) => part.type === "Glob" && part.extglob,
+  )
+    ? await expandWordForGlobbing(ctx, word)
+    : null;
+  const unescapedValue = unescapeGlobPattern(structuredGlobPattern ?? value);
 
   if (!ctx.state.options.noglob && hasGlobParts) {
-    const globPattern = await expandWordForGlobbing(ctx, word);
+    const globPattern =
+      structuredGlobPattern ?? (await expandWordForGlobbing(ctx, word));
 
     if (hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
       const matches = await expandGlobPattern(ctx, globPattern);
@@ -919,7 +926,6 @@ async function handleFinalGlobExpansion(
       }
     }
 
-    const unescapedValue = unescapeGlobPattern(value);
     if (!isIfsEmpty(ctx.state.env)) {
       const ifsChars = getIfs(ctx.state.env);
       const splitValues = splitByIfsForExpansion(
@@ -952,7 +958,6 @@ async function handleFinalGlobExpansion(
   }
 
   if (hasGlobParts && !hasQuoted) {
-    const unescapedValue = unescapeGlobPattern(value);
     if (!isIfsEmpty(ctx.state.env)) {
       const ifsChars = getIfs(ctx.state.env);
       const splitValues = splitByIfsForExpansion(

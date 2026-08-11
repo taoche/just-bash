@@ -780,6 +780,15 @@ export interface TildeExpansionPart extends ASTNode {
 export interface GlobPart extends ASTNode {
   type: "Glob";
   pattern: string;
+  /** Parsed extglob structure when this node originated from an extglob pattern. */
+  extglob?: ExtglobMetadata;
+}
+
+export type ExtglobOperator = "@" | "*" | "+" | "?" | "!";
+
+export interface ExtglobMetadata {
+  operator: ExtglobOperator;
+  alternatives: WordNode[];
 }
 
 // =============================================================================

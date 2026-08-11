@@ -127,6 +127,13 @@ export class CommandCollectorPlugin
         case "DoubleQuoted":
           this.walkWordParts(part.parts, commands);
           break;
+        case "Glob":
+          if (part.extglob) {
+            for (const alternative of part.extglob.alternatives) {
+              this.walkWordParts(alternative.parts, commands);
+            }
+          }
+          break;
         case "ParameterExpansion":
           if (part.operation) {
             this.walkParameterOp(part.operation, commands);

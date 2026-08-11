@@ -11,6 +11,7 @@
  */
 
 import type {
+  GlobPart,
   ParameterExpansionPart,
   WordNode,
   WordPart,
@@ -291,9 +292,9 @@ async function expandWordForGlobbing(
       const expanded = await expandWordPartsAsync(ctx, part.parts);
       parts.push(escapeGlobChars(expanded));
     } else if (part.type === "Glob") {
-      // Glob pattern: expand variables and command substitutions within extglob patterns
-      // e.g., @($var|$(echo foo)) needs both variable and command substitution expansion
-      if (patternHasCommandSubstitution(part.pattern)) {
+      if (part.extglob) {
+        parts.push(await expandStructuredExtglob(ctx, part.extglob));
+      } else if (patternHasCommandSubstitution(part.pattern)) {
         // Use async version for command substitutions
         parts.push(await expandVariablesInPatternAsync(ctx, part.pattern));
       } else {
@@ -309,6 +310,17 @@ async function expandWordForGlobbing(
     }
   }
   return parts.join("");
+}
+
+async function expandStructuredExtglob(
+  ctx: InterpreterContext,
+  extglob: NonNullable<GlobPart["extglob"]>,
+): Promise<string> {
+  const alternatives: string[] = [];
+  for (const alternative of extglob.alternatives) {
+    alternatives.push(await expandWordForGlobbing(ctx, alternative));
+  }
+  return `${extglob.operator}(${alternatives.join("|")})`;
 }
 
 /**

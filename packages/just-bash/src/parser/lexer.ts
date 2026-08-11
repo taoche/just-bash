@@ -10,6 +10,7 @@
  * - Escape sequences
  */
 
+import { findExtglobClose } from "./extglob.js";
 import { readHeredocDelimiter } from "./parser-substitution.js";
 
 // Default max heredoc size to prevent memory exhaustion (10MB)
@@ -2334,51 +2335,14 @@ export class Lexer {
   private scanExtglobPattern(
     startPos: number,
   ): { content: string; end: number } | null {
-    const input = this.input;
-    const len = input.length;
-    let pos = startPos + 1; // Skip the opening (
-    let depth = 1;
-
-    while (pos < len && depth > 0) {
-      const c = input[pos];
-
-      // Handle escapes
-      if (c === "\\" && pos + 1 < len) {
-        pos += 2;
-        continue;
-      }
-
-      // Handle nested extglob patterns
-      if ("@*+?!".includes(c) && pos + 1 < len && input[pos + 1] === "(") {
-        pos++; // Skip the extglob operator
-        depth++;
-        pos++; // Skip the (
-        continue;
-      }
-
-      if (c === "(") {
-        depth++;
-        pos++;
-      } else if (c === ")") {
-        depth--;
-        pos++;
-      } else if (c === "\n") {
-        // Newline inside extglob is not allowed (bash behavior)
-        return null;
-      } else {
-        pos++;
-      }
+    const close = findExtglobClose(this.input, startPos);
+    if (close === -1 || this.input.slice(startPos, close).includes("\n")) {
+      return null;
     }
-
-    // Must have balanced parentheses
-    if (depth === 0) {
-      return {
-        content: input.slice(startPos, pos),
-        end: pos,
-      };
-    }
-
-    return null;
+    return {
+      content: this.input.slice(startPos, close + 1),
+      end: close + 1,
+    };
   }
 
   /**

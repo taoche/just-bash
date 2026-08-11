@@ -239,7 +239,9 @@ async function executeForBody(
     } catch (e) {
       if (e instanceof GlobError) {
         // failglob: return error with exit code 1
-        return { stdout: "", stderr: e.stderr, exitCode: 1 };
+        const stderr = (ctx.state.expansionStderr || "") + e.stderr;
+        ctx.state.expansionStderr = "";
+        return { stdout: "", stderr, exitCode: 1 };
       }
       throw e;
     }
