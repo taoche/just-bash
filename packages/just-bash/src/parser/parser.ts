@@ -107,6 +107,11 @@ export class Parser {
     this.parseBudget.chargeIteration(token?.line ?? 1, token?.column ?? 1);
   }
 
+  chargeSyntheticTokens(count: number): void {
+    const token = this.current();
+    this.parseBudget.chargeTokens(count, token?.line ?? 1, token?.column ?? 1);
+  }
+
   /**
    * Increment parse depth and check limit to prevent stack overflow
    * from deeply nested constructs. Returns a function to decrement depth.

@@ -1,7 +1,6 @@
 /** Find the closing parenthesis for an extglob starting at `openIndex`. */
 export function findExtglobClose(value: string, openIndex: number): number {
   let depth = 1;
-  let braceDepth = 0;
   let quote: "'" | '"' | undefined;
 
   for (let index = openIndex + 1; index < value.length; index++) {
@@ -41,16 +40,12 @@ export function findExtglobClose(value: string, openIndex: number): number {
     }
 
     if (character === "{") {
-      braceDepth += 1;
-      continue;
+      const close = findBraceEnd(value, index);
+      if (close !== -1) {
+        index = close;
+        continue;
+      }
     }
-
-    if (character === "}" && braceDepth > 0) {
-      braceDepth -= 1;
-      continue;
-    }
-
-    if (braceDepth > 0) continue;
 
     if (character === "(") {
       depth += 1;
@@ -64,11 +59,13 @@ export function findExtglobClose(value: string, openIndex: number): number {
 }
 
 /** Split top-level extglob alternatives without interpreting quoted or nested text. */
-export function splitExtglobAlternatives(content: string): string[] {
+export function splitExtglobAlternatives(
+  content: string,
+  maximum: number = Number.POSITIVE_INFINITY,
+): string[] | null {
   const alternatives: string[] = [];
   let start = 0;
   let depth = 0;
-  let braceDepth = 0;
   let quote: "'" | '"' | undefined;
 
   for (let index = 0; index < content.length; index++) {
@@ -108,22 +105,19 @@ export function splitExtglobAlternatives(content: string): string[] {
     }
 
     if (character === "{") {
-      braceDepth += 1;
-      continue;
+      const close = findBraceEnd(content, index);
+      if (close !== -1) {
+        index = close;
+        continue;
+      }
     }
-
-    if (character === "}" && braceDepth > 0) {
-      braceDepth -= 1;
-      continue;
-    }
-
-    if (braceDepth > 0) continue;
 
     if (character === "(") {
       depth += 1;
     } else if (character === ")") {
       depth -= 1;
     } else if (character === "|" && depth === 0) {
+      if (alternatives.length >= maximum - 1) return null;
       alternatives.push(content.slice(start, index));
       start = index + 1;
     }
@@ -131,6 +125,57 @@ export function splitExtglobAlternatives(content: string): string[] {
 
   alternatives.push(content.slice(start));
   return alternatives;
+}
+
+function findBraceEnd(value: string, start: number): number {
+  let depth = 1;
+  let quote: "'" | '"' | undefined;
+
+  for (let index = start + 1; index < value.length; index++) {
+    const character = value[index];
+
+    if (quote) {
+      if (character === "\\" && quote === '"' && index + 1 < value.length) {
+        index += 1;
+      } else if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+
+    if (character === "\\" && index + 1 < value.length) {
+      index += 1;
+      continue;
+    }
+
+    if (character === "`") {
+      index = findBacktickClose(value, index);
+      if (index === -1) return -1;
+      continue;
+    }
+
+    if (character === "[") {
+      const close = findBracketExpressionEnd(value, index);
+      if (close !== -1) {
+        index = close;
+        continue;
+      }
+    }
+
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+
+  return -1;
 }
 
 function findBracketExpressionEnd(value: string, start: number): number {

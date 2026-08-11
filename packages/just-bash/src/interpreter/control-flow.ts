@@ -37,6 +37,7 @@ import {
 import {
   escapeGlobChars,
   expandWord,
+  expandWordForPattern,
   expandWordWithGlob,
   isWordFullyQuoted,
 } from "./expansion.js";
@@ -611,7 +612,12 @@ async function executeCaseBody(
     if (!fallThrough) {
       // Normal pattern matching
       for (const pattern of item.patterns) {
-        let patternStr = await expandWord(ctx, pattern);
+        const hasStructuredExtglob = pattern.parts.some(
+          (part) => part.type === "Glob" && part.extglob,
+        );
+        let patternStr = hasStructuredExtglob
+          ? await expandWordForPattern(ctx, pattern)
+          : await expandWord(ctx, pattern);
         // If the pattern is fully quoted, escape glob characters for literal matching
         if (isWordFullyQuoted(pattern)) {
           patternStr = escapeGlobChars(patternStr);

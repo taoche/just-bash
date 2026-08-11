@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { GlobPart } from "../ast/types.js";
+import { serialize } from "../transform/serialize.js";
 import { parse } from "./parser.js";
+import { MAX_TOKENS, ParseException } from "./types.js";
 
 function getGlob(script: string): GlobPart {
   const command = parse(script).statements[0].pipelines[0].commands[0];
@@ -85,5 +87,17 @@ describe("structured extglobs", () => {
     expect(glob.extglob?.alternatives[2].parts).toEqual([
       { type: "Literal", value: "prefix{one|two,three}" },
     ]);
+  });
+
+  it("treats unmatched braces as literal text", () => {
+    const script = "echo x@(foo{bar|baz)";
+
+    expect(serialize(parse(script))).toBe(script);
+  });
+
+  it("limits structured alternatives before allocating their AST", () => {
+    expect(() => parse(`echo @(${"|".repeat(MAX_TOKENS)})`)).toThrow(
+      ParseException,
+    );
   });
 });

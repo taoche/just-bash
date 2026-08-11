@@ -121,6 +121,9 @@ export async function expandWordWithGlobImpl(
 ): Promise<{ values: string[]; quoted: boolean }> {
   ctx.coverage?.hit("bash:expansion:word_glob");
   const wordParts = word.parts;
+  const hasStructuredExtglob = wordParts.some(
+    (part) => part.type === "Glob" && part.extglob,
+  );
   const {
     hasQuoted,
     hasCommandSub,
@@ -201,7 +204,9 @@ export async function expandWordWithGlobImpl(
     return applyGlobToValues(ctx, splitResult);
   }
 
-  const value = await deps.expandWordAsync(ctx, word);
+  const value = hasStructuredExtglob
+    ? ""
+    : await deps.expandWordAsync(ctx, word);
   return handleFinalGlobExpansion(
     ctx,
     word,
@@ -953,7 +958,7 @@ async function handleFinalGlobExpansion(
     }
   }
 
-  if (value === "" && !hasQuoted) {
+  if (value === "" && !hasQuoted && !structuredGlobPattern) {
     return { values: [], quoted: false };
   }
 

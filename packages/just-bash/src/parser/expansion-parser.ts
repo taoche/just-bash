@@ -16,7 +16,7 @@ import {
 import { parseArithmeticExpression } from "./arithmetic-parser.js";
 import { findExtglobClose, splitExtglobAlternatives } from "./extglob.js";
 import type { Parser } from "./parser.js";
-import { ParseException } from "./types.js";
+import { MAX_TOKENS, ParseException } from "./types.js";
 import * as WordParser from "./word-parser.js";
 
 function normalizeRegexBracketEscapes(pattern: string): string {
@@ -1036,9 +1036,15 @@ export function parseWordParts(
       if (closeIdx !== -1) {
         flushLiteral();
         const pattern = value.slice(i, closeIdx + 1);
-        const alternatives = splitExtglobAlternatives(
+        const alternativeStrings = splitExtglobAlternatives(
           value.slice(i + 2, closeIdx),
-        ).map((alternative) =>
+          MAX_TOKENS,
+        );
+        if (!alternativeStrings) {
+          p.error(`Too many extglob alternatives: limit of ${MAX_TOKENS}`);
+        }
+        p.chargeSyntheticTokens(alternativeStrings.length);
+        const alternatives = alternativeStrings.map((alternative) =>
           AST.word(
             ensureNonEmpty(
               p.withDepth(() =>
