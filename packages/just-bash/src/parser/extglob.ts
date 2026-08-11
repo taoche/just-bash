@@ -133,13 +133,22 @@ export function splitExtglobAlternatives(
 
 function findBraceEnds(value: string): Int32Array {
   const ends = new Int32Array(value.length);
-  const starts: number[] = [];
+  const braces: Array<{
+    start: number;
+    forceOpaque: boolean;
+    hasComma: boolean;
+    hasNestedBrace: boolean;
+    hasNestedExpansion: boolean;
+    content: string[];
+  }> = [];
   let quote: Quote | undefined;
 
   for (let index = 0; index < value.length; index++) {
     const character = value[index];
+    const brace = braces[braces.length - 1];
 
     if (quote) {
+      if (character === "," && brace) brace.hasComma = true;
       if (character === "\\" && quote !== "'" && index + 1 < value.length) {
         index += 1;
       } else if (character === (quote === "$'" ? "'" : quote)) {
@@ -149,46 +158,91 @@ function findBraceEnds(value: string): Int32Array {
     }
 
     if (character === "$" && value[index + 1] === "'") {
+      if (brace) brace.content.push("\0");
       quote = "$'";
       index += 1;
       continue;
     }
 
     if (character === "'" || character === '"') {
+      if (brace) brace.content.push("\0");
       quote = character;
       continue;
     }
 
     if (character === "\\" && index + 1 < value.length) {
+      if (brace) {
+        brace.content.push("\0");
+        if (value[index + 1] === ",") brace.hasComma = true;
+      }
       index += 1;
       continue;
     }
 
     if (character === "`") {
-      index = findBacktickClose(value, index);
-      if (index === -1) return ends;
+      const close = findBacktickClose(value, index);
+      if (close === -1) return ends;
+      if (brace) {
+        brace.content.push("\0");
+        const comma = value.indexOf(",", index + 1);
+        brace.hasComma ||= comma !== -1 && comma < close;
+      }
+      index = close;
       continue;
     }
 
     if (character === "[") {
       const close = findBracketExpressionEnd(value, index);
       if (close !== -1) {
+        if (brace) {
+          brace.content.push("\0");
+          const comma = value.indexOf(",", index + 1);
+          brace.hasComma ||= comma !== -1 && comma < close;
+        }
         index = close;
         continue;
       }
     }
 
     if (character === "{") {
-      starts.push(index);
+      if (brace) brace.hasNestedBrace = true;
+      braces.push({
+        start: index,
+        forceOpaque: value[index - 1] === "$",
+        hasComma: false,
+        hasNestedBrace: false,
+        hasNestedExpansion: false,
+        content: [],
+      });
     } else if (character === "}") {
-      const start = starts.pop();
-      if (start !== undefined) {
-        ends[start] = index + 1;
+      const closedBrace = braces.pop();
+      if (!closedBrace) continue;
+      const isExpansion =
+        closedBrace.forceOpaque ||
+        closedBrace.hasComma ||
+        closedBrace.hasNestedExpansion ||
+        (!closedBrace.hasNestedBrace &&
+          isBraceRangeContent(closedBrace.content.join("")));
+      if (isExpansion) {
+        ends[closedBrace.start] = index + 1;
+        const parent = braces[braces.length - 1];
+        if (parent) parent.hasNestedExpansion = true;
       }
+    } else if (brace) {
+      if (character === ",") brace.hasComma = true;
+      brace.content.push(character);
     }
   }
 
   return ends;
+}
+
+function isBraceRangeContent(value: string): boolean {
+  return (
+    value.includes(",") ||
+    /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(value) ||
+    /^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(value)
+  );
 }
 
 function findBracketExpressionEnd(value: string, start: number): number {

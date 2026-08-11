@@ -30,6 +30,7 @@ describe("structured extglobs", () => {
           { type: "Word", parts: [{ type: "Literal", value: "one" }] },
           { type: "Word", parts: [{ type: "Literal", value: "two" }] },
         ],
+        sourcePattern: `${operator}(one|two)`,
       });
     }
   });
@@ -86,6 +87,15 @@ describe("structured extglobs", () => {
     ]);
     expect(glob.extglob?.alternatives[2].parts).toEqual([
       { type: "Literal", value: "prefix{one|two,three}" },
+    ]);
+  });
+
+  it("splits pipes inside ordinary balanced braces", () => {
+    const glob = getGlob("echo @({foo|bar})");
+
+    expect(glob.extglob?.alternatives).toEqual([
+      { type: "Word", parts: [{ type: "Literal", value: "{foo" }] },
+      { type: "Word", parts: [{ type: "Literal", value: "bar}" }] },
     ]);
   });
 

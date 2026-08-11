@@ -914,12 +914,14 @@ async function handleFinalGlobExpansion(
   ) => Promise<string>,
 ): Promise<{ values: string[]; quoted: boolean }> {
   const hasGlobParts = wordParts.some((p) => p.type === "Glob");
-  const structuredGlobPattern = wordParts.some(
+  const hasStructuredExtglob = wordParts.some(
     (part) => part.type === "Glob" && part.extglob,
-  )
-    ? await expandWordForGlobbing(ctx, word)
-    : null;
-  const unescapedValue = structuredGlobPattern
+  );
+  const structuredGlobPattern =
+    hasStructuredExtglob && !ctx.state.options.noglob
+      ? await expandWordForGlobbing(ctx, word)
+      : null;
+  const unescapedValue = hasStructuredExtglob
     ? value
     : unescapeGlobPattern(value);
 
@@ -964,7 +966,7 @@ async function handleFinalGlobExpansion(
     }
   }
 
-  if (value === "" && !hasQuoted && !structuredGlobPattern) {
+  if (value === "" && !hasQuoted && !hasStructuredExtglob) {
     return { values: [], quoted: false };
   }
 

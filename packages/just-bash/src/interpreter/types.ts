@@ -368,6 +368,8 @@ export interface ExpansionState {
   expansionExitCode?: number;
   /** Stderr from expansion errors */
   expansionStderr?: string;
+  /** Expansion stderr bytes already charged to the shared output budget. */
+  expansionStderrAccountedBytes?: number;
 }
 
 // ============================================================================

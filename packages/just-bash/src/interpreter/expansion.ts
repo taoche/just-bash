@@ -324,7 +324,9 @@ async function expandStructuredExtglobForGlobbing(
   for (const alternative of extglob.alternatives) {
     alternatives.push(await expandWordForGlobbing(ctx, alternative));
   }
-  return `${extglob.operator}(${alternatives.join("|")})`;
+  const result = `${extglob.operator}(${alternatives.join("|")})`;
+  checkStringLength(result, ctx.limits.maxStringLength, "word expansion");
+  return result;
 }
 
 async function expandWordWithStructuredExtglobs(
@@ -345,7 +347,9 @@ async function expandWordWithStructuredExtglobs(
       parts.push(await expandPart(ctx, part));
     }
   }
-  return parts.join("");
+  const result = parts.join("");
+  checkStringLength(result, ctx.limits.maxStringLength, "word expansion");
+  return result;
 }
 
 /**
@@ -558,15 +562,28 @@ export async function expandWordWithGlob(
  * Get textual representation of a word for error messages
  */
 function getWordText(parts: WordPart[]): string {
-  for (const p of parts) {
-    if (p.type === "ParameterExpansion") {
-      return p.parameter;
-    }
-    if (p.type === "Literal") {
-      return p.value;
-    }
-  }
-  return "";
+  return parts
+    .map((part) => {
+      switch (part.type) {
+        case "Literal":
+          return part.value;
+        case "SingleQuoted":
+          return `'${part.value}'`;
+        case "DoubleQuoted":
+          return `"${getWordText(part.parts)}"`;
+        case "Escaped":
+          return `\\${part.value}`;
+        case "ParameterExpansion":
+          return /^[a-zA-Z_][a-zA-Z0-9_]*$|^[?#@*$!\-0-9]$/.test(part.parameter)
+            ? `$${part.parameter}`
+            : `\${${part.parameter}}`;
+        case "Glob":
+          return part.pattern;
+        default:
+          return "";
+      }
+    })
+    .join("");
 }
 
 export function hasQuotedMultiValueAt(
@@ -677,9 +694,8 @@ export async function expandRedirectTarget(
     );
     if (splitWords.length > 1) {
       // Word splitting produces multiple words - ambiguous redirect
-      const glob = wordParts.find((part) => part.type === "Glob");
       return {
-        error: `bash: ${glob?.pattern ?? `$${getWordText(wordParts)}`}: ambiguous redirect\n`,
+        error: `bash: ${getWordText(wordParts)}: ambiguous redirect\n`,
       };
     }
   }
@@ -864,8 +880,10 @@ async function expandPart(
       // bash only prints verbose output for the main script
       const savedSuppressVerbose = ctx.state.suppressVerbose;
       ctx.state.suppressVerbose = true;
+      const capturedStdout = ctx.executionScope.captureStdout();
       try {
         const result = await ctx.executeScript(part.body);
+        capturedStdout.release();
         // Restore environment but preserve exit code
         const exitCode = result.exitCode;
         ctx.state.env = savedEnv;
@@ -880,6 +898,9 @@ async function expandPart(
         if (result.stderr) {
           ctx.state.expansionStderr =
             (ctx.state.expansionStderr || "") + result.stderr;
+          ctx.state.expansionStderrAccountedBytes =
+            (ctx.state.expansionStderrAccountedBytes ?? 0) +
+            (result.internalOutputAccounting?.stderr ?? 0);
         }
         ctx.state.bashPid = savedBashPid;
         ctx.substitutionDepth = savedDepth;
@@ -892,6 +913,7 @@ async function expandPart(
         );
         return output;
       } catch (error) {
+        capturedStdout.release();
         // Restore environment on error as well
         ctx.state.env = savedEnv;
         ctx.state.arrays = savedArrays;
@@ -901,6 +923,8 @@ async function expandPart(
         ctx.state.suppressVerbose = savedSuppressVerbose;
         // ExecutionLimitError must always propagate - these are safety limits
         if (error instanceof ExecutionLimitError) {
+          error.stdout = "";
+          error.internalOutputAccounting.stdout = 0;
           throw error;
         }
         if (error instanceof ExitError) {
@@ -911,6 +935,9 @@ async function expandPart(
           if (error.stderr) {
             ctx.state.expansionStderr =
               (ctx.state.expansionStderr || "") + error.stderr;
+            ctx.state.expansionStderrAccountedBytes =
+              (ctx.state.expansionStderrAccountedBytes ?? 0) +
+              error.internalOutputAccounting.stderr;
           }
           const exitOutput = error.stdout.replace(/\n+$/, "");
           // Check string length limit for command substitution output
@@ -1063,7 +1090,15 @@ async function expandParameterAsync(
     return value;
   }
 
-  const isUnset = !(await isVariableSet(ctx, parameter));
+  const needsUnsetCheck =
+    operation.type === "Transform" ||
+    operation.type === "Indirection" ||
+    ((operation.type === "DefaultValue" ||
+      operation.type === "AssignDefault" ||
+      operation.type === "ErrorIfUnset" ||
+      operation.type === "UseAlternative") &&
+      !operation.checkEmpty);
+  const isUnset = needsUnsetCheck && !(await isVariableSet(ctx, parameter));
   // Compute isEmpty and effectiveValue using extracted helper
   const { isEmpty, effectiveValue } = computeIsEmpty(
     ctx,

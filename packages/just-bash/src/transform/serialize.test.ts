@@ -469,6 +469,22 @@ describe("serialize", () => {
       expect(serialize(ast)).toBe("echo x@(updated|after)");
     });
 
+    it("serializes an updated public extglob pattern when metadata is stale", () => {
+      const ast = parse("echo x@(before|after)");
+      const command = ast.statements[0].pipelines[0].commands[0];
+      if (command.type !== "SimpleCommand") {
+        throw new Error("Expected a simple command");
+      }
+      const glob = command.args[0].parts[1];
+      if (glob.type !== "Glob" || !glob.extglob) {
+        throw new Error("Expected a structured extglob");
+      }
+
+      glob.pattern = "@(updated|after)";
+
+      expect(serialize(ast)).toBe("echo x@(updated|after)");
+    });
+
     it("escapes braces added by a transformed alternative", () => {
       const ast = parse("echo x@(before|after)");
       const command = ast.statements[0].pipelines[0].commands[0];

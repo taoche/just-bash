@@ -1068,7 +1068,11 @@ export function parseWordParts(
         parts.push({
           type: "Glob",
           pattern,
-          extglob: { operator: char as ExtglobOperator, alternatives },
+          extglob: {
+            operator: char as ExtglobOperator,
+            alternatives,
+            sourcePattern: pattern,
+          },
         });
         i = closeIdx + 1;
         continue;

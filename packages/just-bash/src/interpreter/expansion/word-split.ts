@@ -13,6 +13,7 @@ import {
   globPatternHasVarRef,
   isOperationWordEntirelyQuoted,
 } from "./analysis.js";
+import { escapeGlobChars } from "./glob-escape.js";
 
 function pushSplitWord(
   ctx: InterpreterContext,
@@ -204,6 +205,74 @@ function isPartSplittable(part: WordPart): boolean {
   return true;
 }
 
+type SplitSegment = {
+  value: string;
+  isSplittable: boolean;
+  isQuoted: boolean;
+  mixedDefaultParts?: WordPart[];
+};
+
+async function appendSplitSegments(
+  ctx: InterpreterContext,
+  parts: WordPart[],
+  expandPartFn: ExpandPartFn,
+  segments: SplitSegment[],
+  inStructuredExtglob = false,
+): Promise<boolean> {
+  let hasSplittablePart = false;
+
+  for (const part of parts) {
+    if (part.type === "Glob" && part.extglob) {
+      segments.push({
+        value: `${part.extglob.operator}(`,
+        isSplittable: false,
+        isQuoted: false,
+      });
+      for (let index = 0; index < part.extglob.alternatives.length; index++) {
+        const alternativeHasSplittablePart = await appendSplitSegments(
+          ctx,
+          part.extglob.alternatives[index].parts,
+          expandPartFn,
+          segments,
+          true,
+        );
+        hasSplittablePart ||= alternativeHasSplittablePart;
+        if (index < part.extglob.alternatives.length - 1) {
+          segments.push({ value: "|", isSplittable: false, isQuoted: false });
+        }
+      }
+      segments.push({ value: ")", isSplittable: false, isQuoted: false });
+      continue;
+    }
+
+    const splittable = isPartSplittable(part);
+    const isQuoted =
+      part.type === "DoubleQuoted" || part.type === "SingleQuoted";
+    const mixedDefaultParts =
+      !inStructuredExtglob && splittable
+        ? await hasMixedQuotedDefaultValue(ctx, part)
+        : null;
+    const expanded = await expandPartFn(ctx, part);
+    segments.push({
+      value:
+        inStructuredExtglob &&
+        (part.type === "DoubleQuoted" || part.type === "SingleQuoted")
+          ? escapeGlobChars(expanded)
+          : inStructuredExtglob &&
+              part.type === "Escaped" &&
+              "*?[]\\()|".includes(part.value)
+            ? `\\${part.value}`
+            : expanded,
+      isSplittable: splittable,
+      isQuoted,
+      mixedDefaultParts: mixedDefaultParts ?? undefined,
+    });
+    hasSplittablePart ||= splittable;
+  }
+
+  return hasSplittablePart;
+}
+
 /**
  * Smart word splitting for words containing expansions.
  *
@@ -266,36 +335,25 @@ export async function smartWordSplit(
     }
   }
 
-  // Expand all parts and track if they are splittable
-  // Also track if they have mixed quoted default values that need special handling
-  type Segment = {
-    value: string;
-    isSplittable: boolean;
-    /** True if this is a quoted part (DoubleQuoted or SingleQuoted) - can anchor empty words */
-    isQuoted: boolean;
-    mixedDefaultParts?: WordPart[];
-  };
-  const segments: Segment[] = [];
-  let hasAnySplittable = false;
+  // Preserve quote boundaries inside structured extglob alternatives.
+  const segments: SplitSegment[] = [];
+  const hasAnySplittable = await appendSplitSegments(
+    ctx,
+    wordParts,
+    expandPartFn,
+    segments,
+  );
 
-  for (const part of wordParts) {
-    const splittable = isPartSplittable(part);
-    const isQuoted =
-      part.type === "DoubleQuoted" || part.type === "SingleQuoted";
-    // Check if this part has a mixed quoted/unquoted default value
-    const mixedDefaultParts = splittable
-      ? await hasMixedQuotedDefaultValue(ctx, part)
-      : null;
-    const expanded = await expandPartFn(ctx, part);
-    segments.push({
-      value: expanded,
-      isSplittable: splittable,
-      isQuoted,
-      mixedDefaultParts: mixedDefaultParts ?? undefined,
-    });
-
-    if (splittable) {
-      hasAnySplittable = true;
+  if (wordParts.some((part) => part.type === "Glob" && part.extglob)) {
+    let length = 0;
+    for (const segment of segments) {
+      if (segment.value.length > ctx.limits.maxStringLength - length) {
+        throw new ExecutionLimitError(
+          `word expansion: string length limit exceeded (${ctx.limits.maxStringLength} bytes)`,
+          "string_length",
+        );
+      }
+      length += segment.value.length;
     }
   }
 
@@ -413,6 +471,12 @@ export async function smartWordSplit(
         ifsChars,
         ctx.limits.maxArrayElements,
       );
+
+      if (hadLeadingDelimiter && currentWord !== "") {
+        pushSplitWord(ctx, words, currentWord);
+        currentWord = "";
+        hasProducedWord = true;
+      }
 
       // If the previous segment was a quoted empty and this splittable segment
       // has leading IFS delimiter, the quoted empty should anchor an empty word

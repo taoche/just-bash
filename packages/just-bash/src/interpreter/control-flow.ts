@@ -88,7 +88,9 @@ class CompoundOutput {
   constructor(private readonly ctx: InterpreterContext) {}
 
   append(stdout: string, stderr: string): void {
-    const addedBytes = utf8ByteLength(stdout) + utf8ByteLength(stderr);
+    const addedBytes =
+      (this.ctx.executionScope.isCapturingStdout ? 0 : utf8ByteLength(stdout)) +
+      utf8ByteLength(stderr);
     if (addedBytes > this.ctx.limits.maxOutputSize - this.totalBytes) {
       throwExecutionLimit(
         `total output size exceeded (>${this.ctx.limits.maxOutputSize} bytes), increase executionLimits.maxOutputSize`,
@@ -105,6 +107,16 @@ class CompoundOutput {
     this.ctx.executionScope.appendOutput("stdout", stdout, "control-flow");
     this.ctx.executionScope.appendOutput("stderr", stderr, "control-flow");
     this.append(stdout, stderr);
+  }
+
+  appendExpansionStderr(stderr: string, alreadyAccountedBytes: number): void {
+    this.ctx.executionScope.appendOutput(
+      "stderr",
+      stderr,
+      "control-flow",
+      alreadyAccountedBytes,
+    );
+    this.append("", stderr);
   }
 
   replace(stdout: string, stderr: string): void {
@@ -131,7 +143,9 @@ class CompoundOutput {
       stderr,
       exitCode,
       internalOutputAccounting: {
-        stdout: utf8ByteLength(stdout),
+        stdout: this.ctx.executionScope.isCapturingStdout
+          ? 0
+          : utf8ByteLength(stdout),
         stderr: utf8ByteLength(stderr),
       },
     };
@@ -241,8 +255,15 @@ async function executeForBody(
       if (e instanceof GlobError) {
         // failglob: return error with exit code 1
         const stderr = (ctx.state.expansionStderr || "") + e.stderr;
+        const accountedStderr = ctx.state.expansionStderrAccountedBytes ?? 0;
         ctx.state.expansionStderr = "";
-        return { stdout: "", stderr, exitCode: 1 };
+        ctx.state.expansionStderrAccountedBytes = undefined;
+        return {
+          stdout: "",
+          stderr,
+          exitCode: 1,
+          internalOutputAccounting: { stdout: 0, stderr: accountedStderr },
+        };
       }
       throw e;
     }
@@ -601,8 +622,12 @@ async function executeCaseBody(
 
   const value = await expandWord(ctx, node.word);
   if (ctx.state.expansionStderr) {
-    output.appendUnaccounted("", ctx.state.expansionStderr);
+    output.appendExpansionStderr(
+      ctx.state.expansionStderr,
+      ctx.state.expansionStderrAccountedBytes ?? 0,
+    );
     ctx.state.expansionStderr = "";
+    ctx.state.expansionStderrAccountedBytes = undefined;
   }
 
   // fallThrough tracks whether we should execute the next case body unconditionally
@@ -623,8 +648,12 @@ async function executeCaseBody(
           ? await expandWordForPattern(ctx, pattern)
           : await expandWord(ctx, pattern);
         if (ctx.state.expansionStderr) {
-          output.appendUnaccounted("", ctx.state.expansionStderr);
+          output.appendExpansionStderr(
+            ctx.state.expansionStderr,
+            ctx.state.expansionStderrAccountedBytes ?? 0,
+          );
           ctx.state.expansionStderr = "";
+          ctx.state.expansionStderrAccountedBytes = undefined;
         }
         // If the pattern is fully quoted, escape glob characters for literal matching
         if (isWordFullyQuoted(pattern)) {

@@ -789,6 +789,8 @@ export type ExtglobOperator = "@" | "*" | "+" | "?" | "!";
 export interface ExtglobMetadata {
   operator: ExtglobOperator;
   alternatives: WordNode[];
+  /** Original raw pattern, used to detect a direct update to Glob.pattern. */
+  sourcePattern: string;
 }
 
 // =============================================================================

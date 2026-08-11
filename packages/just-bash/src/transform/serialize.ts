@@ -188,9 +188,14 @@ function serializeWordPart(part: WordPart, inDoubleQuotes: boolean): string {
       return part.user !== null ? `~${part.user}` : "~";
     case "Glob":
       if (part.extglob) {
+        if (part.pattern !== part.extglob.sourcePattern) {
+          return part.pattern;
+        }
         const pattern = `${part.extglob.operator}(${part.extglob.alternatives.map(serializeWord).join("|")})`;
         const rawPattern = `${part.extglob.operator}(${part.extglob.alternatives.map(serializeExtglobWordWithRawBraces).join("|")})`;
-        return rawPattern === part.pattern ? part.pattern : pattern;
+        return rawPattern === part.extglob.sourcePattern
+          ? part.extglob.sourcePattern
+          : pattern;
       }
       return part.pattern;
     default: {
