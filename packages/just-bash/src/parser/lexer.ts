@@ -302,6 +302,7 @@ export class Lexer {
   private pendingHeredocs: {
     delimiter: string;
     stripTabs: boolean;
+    quoted: boolean;
   }[] = [];
   private pendingHeredocDelimiterMode: boolean | undefined;
   // Track depth inside (( )) for C-style for loops and arithmetic commands
@@ -1969,16 +1970,41 @@ export class Lexer {
       // Read until we find the delimiter on its own line
       while (this.pos < this.input.length) {
         let line = "";
+        let continuationContent = "";
+        let lineToCheck = "";
 
-        // Read one line
-        while (this.pos < this.input.length && this.input[this.pos] !== "\n") {
-          line += this.input[this.pos];
+        // Bash removes unquoted backslash-newline continuations before matching a delimiter.
+        while (true) {
+          line = "";
+          while (
+            this.pos < this.input.length &&
+            this.input[this.pos] !== "\n"
+          ) {
+            line += this.input[this.pos];
+            this.pos++;
+            this.column++;
+          }
+
+          const currentLine = heredoc.stripTabs
+            ? line.replace(/^\t+/, "")
+            : line;
+          lineToCheck += currentLine;
+          if (
+            heredoc.quoted ||
+            !currentLine.endsWith("\\") ||
+            this.pos + 1 >= this.input.length
+          ) {
+            break;
+          }
+
+          lineToCheck = lineToCheck.slice(0, -1);
+          continuationContent += `${line}\n`;
           this.pos++;
-          this.column++;
+          this.line++;
+          this.column = 1;
         }
 
         // Check for delimiter
-        const lineToCheck = heredoc.stripTabs ? line.replace(/^\t+/, "") : line;
         if (lineToCheck === heredoc.delimiter) {
           terminated = true;
           // Consume the newline
@@ -1990,6 +2016,7 @@ export class Lexer {
           break;
         }
 
+        content += continuationContent;
         content += line;
         if (this.pos < this.input.length && this.input[this.pos] === "\n") {
           content += "\n";
@@ -2069,7 +2096,7 @@ export class Lexer {
     this.pos = endPos;
     this.line = currentLine;
     this.column = currentColumn;
-    this.pendingHeredocs.push({ delimiter, stripTabs });
+    this.pendingHeredocs.push({ delimiter, stripTabs, quoted });
 
     return {
       type: TokenType.WORD,

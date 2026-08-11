@@ -58,6 +58,31 @@ describe("heredoc termination", () => {
     });
   });
 
+  it("recognizes a delimiter split by an unquoted continuation", () => {
+    expect(parseHeredoc("cat <<EOF\nEO\\\nF")).toMatchObject({
+      terminated: true,
+      content: { parts: [] },
+    });
+  });
+
+  it("does not recognize a delimiter after an unquoted continuation", () => {
+    expect(parseHeredoc("cat <<EOF\nbody\\\nEOF")).toMatchObject({
+      terminated: false,
+      content: {
+        parts: [{ type: "Literal", value: "bodyEOF\n" }],
+      },
+    });
+  });
+
+  it("does not fold continuations in quoted heredocs", () => {
+    expect(parseHeredoc("cat <<'EOF'\nEO\\\nF")).toMatchObject({
+      terminated: false,
+      content: {
+        parts: [{ type: "Literal", value: "EO\\\nF\n" }],
+      },
+    });
+  });
+
   it("records missing quoted and tab-stripping delimiters", () => {
     expect(parseHeredoc("cat <<'EOF'\nbody").terminated).toBe(false);
     expect(parseHeredoc("cat <<-EOF\n\tbody").terminated).toBe(false);

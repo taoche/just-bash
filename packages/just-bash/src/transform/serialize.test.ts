@@ -422,6 +422,12 @@ describe("serialize", () => {
         );
       }
     });
+    it("recognizes unquoted continuations before checking heredoc delimiters", () => {
+      expect(() => serialize(parse("cat <<EOF\nEO\\\nF"))).not.toThrow();
+      expect(() => serialize(parse("cat <<EOF\nbody\\\nEOF"))).toThrow(
+        "Cannot serialize an unterminated here-document",
+      );
+    });
     it("legacy heredoc without termination evidence", () => {
       const source = "cat <<EOF\nbody\nEOF";
       const ast = parse(source);
