@@ -171,4 +171,68 @@ describe("arithmetic command substitution", () => {
     );
     expect(result.exitCode).toBe(1);
   });
+
+  it("does not execute shell syntax from parameter expansion", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      generated() { echo generated >&2; }
+      value='$(generated)'
+      echo $(( \${value} + $(printf 1) ))
+    `);
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "bash: syntax error in arithmetic command substitution\n",
+    );
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("validates substitution bodies before executing any of them", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      wrong() { echo wrong >&2; }
+      echo $(( "$(printf 1 \\; wrong)" + $(printf 2) ))
+    `);
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "bash: syntax error in arithmetic command substitution\n",
+    );
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("restores verbose output after command substitution", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      set -v
+      : $(( $(printf 1) + 1 ))
+      echo after
+    `);
+
+    expect(result.stdout).toBe("after\n");
+    expect(result.stderr).toBe(": $(( $(printf 1) + 1 ))\necho after\n");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("reparses substitutions in indexed arrays and specialized slices", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      values=(zero one two three)
+      set -- zero one two three
+      echo "indexed=\${values[$(printf '1 + 1')]}"
+      printf 'quoted-pos:<%s>\\n' "\${@:$(printf '1 + 1'):$(printf '1 + 1')}"
+      printf 'unquoted-pos:<%s>\\n' \${@:$(printf '1 + 1'):$(printf '1 + 1')}
+      printf 'array:<%s>\\n' "\${values[@]:$(printf '1 + 1'):$(printf '1 + 1')}"
+    `);
+
+    expect(result.stdout).toBe(
+      "indexed=two\nquoted-pos:<one>\nquoted-pos:<two>\nunquoted-pos:<one>\nunquoted-pos:<two>\narray:<two>\narray:<three>\n",
+    );
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
 });

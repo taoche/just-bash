@@ -135,7 +135,7 @@ export async function handleAssignDefault(
         try {
           const parser = new Parser();
           const arithAst = parseArithmeticExpression(parser, subscriptExpr);
-          index = await evaluateArithmetic(ctx, arithAst.expression);
+          index = await evaluateArithmetic(ctx, arithAst);
         } catch {
           const varValue = ctx.state.env.get(subscriptExpr);
           index = varValue ? Number.parseInt(varValue, 10) : 0;

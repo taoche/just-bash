@@ -787,6 +787,7 @@ function parseArithPrimary(
         type: "ArithCommandSubst",
         command: input.slice(currentPos + 2, endIndex - 1),
         body: part.body,
+        legacy: false,
       },
       pos: endIndex,
     };
@@ -800,6 +801,7 @@ function parseArithPrimary(
         type: "ArithCommandSubst",
         command: input.slice(currentPos + 1, endIndex - 1),
         body: part.body,
+        legacy: true,
       },
       pos: endIndex,
     };

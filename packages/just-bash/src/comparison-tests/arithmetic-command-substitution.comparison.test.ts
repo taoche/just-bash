@@ -63,6 +63,22 @@ describe("arithmetic command substitution - Real Bash Comparison", () => {
     );
   });
 
+  it("reparses substitutions in indexed arrays and specialized slices", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(
+      env,
+      testDir,
+      [
+        "values=(zero one two three)",
+        "set -- zero one two three",
+        "echo \"indexed=${values[$(printf '1 + 1')]}\"",
+        "printf 'quoted-pos:<%s>\\n' \"${@:$(printf '1 + 1'):$(printf '1 + 1')}\"",
+        "printf 'unquoted-pos:<%s>\\n' ${@:$(printf '1 + 1'):$(printf '1 + 1')}",
+        "printf 'array:<%s>\\n' \"${values[@]:$(printf '1 + 1'):$(printf '1 + 1')}\"",
+      ].join("\n"),
+    );
+  });
+
   it("isolates shell options changed by substitutions", async () => {
     const env = await setupFiles(testDir, {});
     await compareOutputs(

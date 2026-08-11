@@ -50,6 +50,13 @@ interface ArithmeticResolutionContext {
   depth: number;
 }
 
+interface ArithmeticCommandSubstitution {
+  readonly start: number;
+  readonly end: number;
+  readonly command: string;
+  readonly legacy: boolean;
+}
+
 function createArithmeticResolutionContext(): ArithmeticResolutionContext {
   return { visited: new Set(), depth: 0 };
 }
@@ -98,6 +105,14 @@ function hasShellSyntax(text: string): boolean {
   return /[$`'"\\]/.test(text);
 }
 
+const throwIfShellSyntax = (text: string): void => {
+  if (hasShellSyntax(text)) {
+    throw new ArithmeticError(
+      "syntax error in arithmetic command substitution",
+    );
+  }
+};
+
 const throwArithmeticScanError = (message: string): never => {
   throw new ArithmeticError(message);
 };
@@ -142,11 +157,14 @@ async function expandArithLiteral(
       result += await expandDollarVarsInArithText(
         ctx,
         text.slice(literalStart, position),
+        throwIfShellSyntax,
       );
-      result += await expandBracedContent(
+      const expanded = await expandBracedContent(
         ctx,
         text.slice(position + 2, end - 1),
       );
+      throwIfShellSyntax(expanded);
+      result += expanded;
       position = end;
       literalStart = end;
       continue;
@@ -155,7 +173,12 @@ async function expandArithLiteral(
   }
 
   return (
-    result + (await expandDollarVarsInArithText(ctx, text.slice(literalStart)))
+    result +
+    (await expandDollarVarsInArithText(
+      ctx,
+      text.slice(literalStart),
+      throwIfShellSyntax,
+    ))
   );
 }
 
@@ -179,15 +202,11 @@ async function executeArithCommandSubstitution(
   return "0";
 }
 
-async function expandArithCommandSubstitutions(
-  ctx: InterpreterContext,
+function scanArithCommandSubstitutions(
   text: string,
-  substitutions: ArithCommandSubstNode[],
-): Promise<string> {
-  let result = "";
+): ArithmeticCommandSubstitution[] {
+  const substitutions: ArithmeticCommandSubstitution[] = [];
   let position = 0;
-  let literalStart = 0;
-  let substitutionIndex = 0;
   let inDoubleQuotes = false;
 
   while (position < text.length) {
@@ -198,9 +217,7 @@ async function expandArithCommandSubstitutions(
     }
     if (character === "'") {
       const end = text.indexOf("'", position + 1);
-      if (end === -1) {
-        break;
-      }
+      if (end === -1) break;
       position = end + 1;
       continue;
     }
@@ -224,69 +241,91 @@ async function expandArithCommandSubstitutions(
       text[position + 1] === "(" &&
       text[position + 2] !== "("
     ) {
-      const endIndex = scanCommandSubstitutionEnd(
+      const end = scanCommandSubstitutionEnd(
         text,
         position,
         throwArithmeticScanError,
       );
-      const substitution = substitutions[substitutionIndex++];
-      if (!substitution?.body) {
-        throw new ArithmeticError(
-          "syntax error in arithmetic command substitution",
-        );
-      }
-      result += await expandArithLiteral(
-        ctx,
-        text.slice(literalStart, position),
-      );
-      const output = await executeArithCommandSubstitution(ctx, substitution);
-      if (hasShellSyntax(output)) {
-        throw new ArithmeticError(
-          "syntax error in arithmetic command substitution",
-        );
-      }
-      result += output;
-      position = endIndex;
-      literalStart = position;
+      substitutions.push({
+        start: position,
+        end,
+        command: text.slice(position + 2, end - 1),
+        legacy: false,
+      });
+      position = end;
       continue;
     }
     if (character === "`") {
-      const endIndex = scanBacktickSubstitutionEnd(
+      const end = scanBacktickSubstitutionEnd(
         text,
         position,
         inDoubleQuotes,
         throwArithmeticScanError,
       );
-      const substitution = substitutions[substitutionIndex++];
-      if (!substitution?.body) {
-        throw new ArithmeticError(
-          "syntax error in arithmetic command substitution",
-        );
-      }
-      result += await expandArithLiteral(
-        ctx,
-        text.slice(literalStart, position),
-      );
-      const output = await executeArithCommandSubstitution(ctx, substitution);
-      if (hasShellSyntax(output)) {
-        throw new ArithmeticError(
-          "syntax error in arithmetic command substitution",
-        );
-      }
-      result += output;
-      position = endIndex;
-      literalStart = position;
+      substitutions.push({
+        start: position,
+        end,
+        command: text.slice(position + 1, end - 1),
+        legacy: true,
+      });
+      position = end;
       continue;
     }
     position += 1;
   }
 
-  if (substitutionIndex !== substitutions.length) {
+  return substitutions;
+}
+
+function validateArithCommandSubstitutions(
+  descriptors: ArithmeticCommandSubstitution[],
+  substitutions: ArithCommandSubstNode[],
+): void {
+  if (descriptors.length !== substitutions.length) {
     throw new ArithmeticError(
       "syntax error in arithmetic command substitution",
     );
   }
-  return result + (await expandArithLiteral(ctx, text.slice(literalStart)));
+
+  for (let index = 0; index < descriptors.length; index += 1) {
+    const descriptor = descriptors[index];
+    const substitution = substitutions[index];
+    if (
+      !substitution?.body ||
+      descriptor.command !== substitution.command ||
+      descriptor.legacy !== Boolean(substitution.legacy)
+    ) {
+      throw new ArithmeticError(
+        "syntax error in arithmetic command substitution",
+      );
+    }
+  }
+}
+
+async function expandArithCommandSubstitutions(
+  ctx: InterpreterContext,
+  text: string,
+  substitutions: ArithCommandSubstNode[],
+): Promise<string> {
+  const descriptors = scanArithCommandSubstitutions(text);
+  validateArithCommandSubstitutions(descriptors, substitutions);
+
+  let result = "";
+  let position = 0;
+  for (let index = 0; index < descriptors.length; index += 1) {
+    const descriptor = descriptors[index];
+    const substitution = substitutions[index];
+    result += await expandArithLiteral(
+      ctx,
+      text.slice(position, descriptor.start),
+    );
+    const output = await executeArithCommandSubstitution(ctx, substitution);
+    throwIfShellSyntax(output);
+    result += output;
+    position = descriptor.end;
+  }
+
+  return result + (await expandArithLiteral(ctx, text.slice(position)));
 }
 
 async function evaluateArithmeticExpression(

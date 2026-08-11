@@ -39,6 +39,7 @@ describe("arithmetic command substitution parser", () => {
 
     expect(substitution.command).toBe('printf "1 + 2"');
     expect(substitution.body?.statements).toHaveLength(1);
+    expect(substitution.legacy).toBe(false);
   });
 
   it("keeps backtick source text and parses its body", () => {
@@ -48,6 +49,7 @@ describe("arithmetic command substitution parser", () => {
 
     expect(substitution.command).toBe('printf "1 + 2"');
     expect(substitution.body?.statements).toHaveLength(1);
+    expect(substitution.legacy).toBe(true);
   });
 
   it("uses command substitution boundaries inside quoted command arguments", () => {

@@ -734,6 +734,8 @@ export interface ArithCommandSubstNode extends ASTNode {
   command: string;
   /** Parsed substitution body for nodes produced by the parser. */
   body?: ScriptNode;
+  /** Legacy backtick syntax. */
+  legacy?: boolean;
 }
 
 // =============================================================================
