@@ -186,10 +186,22 @@ export function analyzeWordParts(parts: WordPart[]): WordPartsAnalysis {
         hasIndirection = true;
       }
     }
-    // Check Glob parts for variable references - patterns like +($ABC) contain
-    // parameter expansions that should be subject to IFS splitting
-    if (part.type === "Glob" && globPatternHasVarRef(part.pattern)) {
-      hasParamExpansion = true;
+    if (part.type === "Glob") {
+      if (part.extglob) {
+        for (const alternative of part.extglob.alternatives) {
+          const analysis = analyzeWordParts(alternative.parts);
+          hasQuoted ||= analysis.hasQuoted;
+          hasCommandSub ||= analysis.hasCommandSub;
+          hasArrayVar ||= analysis.hasArrayVar;
+          hasArrayAtExpansion ||= analysis.hasArrayAtExpansion;
+          hasParamExpansion ||= analysis.hasParamExpansion;
+          hasVarNamePrefixExpansion ||= analysis.hasVarNamePrefixExpansion;
+          hasIndirection ||= analysis.hasIndirection;
+        }
+      } else if (globPatternHasVarRef(part.pattern)) {
+        // Legacy raw glob nodes keep their existing variable-reference detection.
+        hasParamExpansion = true;
+      }
     }
   }
 

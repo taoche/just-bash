@@ -158,6 +158,11 @@ function isPartSplittable(part: WordPart): boolean {
   // Glob parts are splittable only if they contain variable references
   // e.g., +($ABC) where ABC contains IFS characters should be split
   if (part.type === "Glob") {
+    if (part.extglob) {
+      return part.extglob.alternatives.some((alternative) =>
+        alternative.parts.some(isPartSplittable),
+      );
+    }
     return globPatternHasVarRef(part.pattern);
   }
 

@@ -101,6 +101,17 @@ describe("structured extglob expansion", () => {
     );
   });
 
+  it("splits unquoted values before expanding the extglob", async () => {
+    await compareWithBash(
+      { "bar.cc": "", "bar.h": "" },
+      "value='a b'; printf '<%s>\\n' $value*.@(cc|h)",
+    );
+  });
+
+  it("rejects split structured redirects before honoring set -f", async () => {
+    await compareWithBash({}, "value='a b'; set -f; printf hi > @($value)");
+  });
+
   it("preserves substitution stderr once before failglob", async () => {
     await compareWithBash(
       {},

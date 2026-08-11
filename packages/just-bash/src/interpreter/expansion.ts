@@ -56,7 +56,6 @@ import {
   escapeGlobChars,
   escapeRegexChars,
   hasGlobPattern,
-  unescapeGlobPattern,
 } from "./expansion/glob-escape.js";
 import {
   computeIsEmpty,
@@ -536,6 +535,7 @@ function createWordGlobDeps(): WordGlobExpansionDeps {
   return {
     expandWordAsync,
     expandWordForGlobbing,
+    expandWordWithStructuredExtglobs,
     expandWordWithBracesAsync,
     expandWordPartsAsync,
     expandPart,
@@ -658,15 +658,8 @@ export async function expandRedirectTarget(
   const hasStructuredExtglob = wordParts.some(
     (part) => part.type === "Glob" && part.extglob,
   );
-  if (hasStructuredExtglob && (hasQuoted || ctx.state.options.noglob)) {
-    return { target: await expandWordWithStructuredExtglobs(ctx, word) };
-  }
-
-  const structuredGlobPattern = hasStructuredExtglob
-    ? await expandWordForGlobbing(ctx, word)
-    : null;
-  const value = structuredGlobPattern
-    ? unescapeGlobPattern(structuredGlobPattern)
+  const value = hasStructuredExtglob
+    ? await expandWordWithStructuredExtglobs(ctx, word)
     : await expandWordAsync(ctx, word);
 
   // Check for word splitting producing multiple words - this is an ambiguous redirect
@@ -684,8 +677,9 @@ export async function expandRedirectTarget(
     );
     if (splitWords.length > 1) {
       // Word splitting produces multiple words - ambiguous redirect
+      const glob = wordParts.find((part) => part.type === "Glob");
       return {
-        error: `bash: $${getWordText(wordParts)}: ambiguous redirect\n`,
+        error: `bash: ${glob?.pattern ?? `$${getWordText(wordParts)}`}: ambiguous redirect\n`,
       };
     }
   }
@@ -707,8 +701,7 @@ export async function expandRedirectTarget(
   // Build glob pattern using expandWordForGlobbing which preserves escaped glob chars
   // For example: two-\* becomes two-\\* (escaped * is literal, not a glob)
   // But: two-$star where star='*' becomes two-* (variable expansion is subject to glob)
-  const globPattern =
-    structuredGlobPattern ?? (await expandWordForGlobbing(ctx, word));
+  const globPattern = await expandWordForGlobbing(ctx, word);
 
   // Skip if there are no glob patterns in the pattern
   if (!hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {

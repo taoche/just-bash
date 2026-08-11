@@ -77,6 +77,10 @@ export interface WordGlobExpansionDeps {
     ctx: InterpreterContext,
     word: WordNode,
   ) => Promise<string>;
+  expandWordWithStructuredExtglobs: (
+    ctx: InterpreterContext,
+    word: WordNode,
+  ) => Promise<string>;
   expandWordWithBracesAsync: (
     ctx: InterpreterContext,
     word: WordNode,
@@ -205,7 +209,7 @@ export async function expandWordWithGlobImpl(
   }
 
   const value = hasStructuredExtglob
-    ? ""
+    ? await deps.expandWordWithStructuredExtglobs(ctx, word)
     : await deps.expandWordAsync(ctx, word);
   return handleFinalGlobExpansion(
     ctx,
@@ -915,7 +919,9 @@ async function handleFinalGlobExpansion(
   )
     ? await expandWordForGlobbing(ctx, word)
     : null;
-  const unescapedValue = unescapeGlobPattern(structuredGlobPattern ?? value);
+  const unescapedValue = structuredGlobPattern
+    ? value
+    : unescapeGlobPattern(value);
 
   if (!ctx.state.options.noglob && hasGlobParts) {
     const globPattern =
