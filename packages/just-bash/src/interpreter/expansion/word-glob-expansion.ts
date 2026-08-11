@@ -209,7 +209,9 @@ export async function expandWordWithGlobImpl(
   }
 
   const value = hasStructuredExtglob
-    ? await deps.expandWordWithStructuredExtglobs(ctx, word)
+    ? ctx.state.options.noglob
+      ? await deps.expandWordWithStructuredExtglobs(ctx, word)
+      : await deps.expandWordForGlobbing(ctx, word)
     : await deps.expandWordAsync(ctx, word);
   return handleFinalGlobExpansion(
     ctx,
@@ -918,12 +920,11 @@ async function handleFinalGlobExpansion(
     (part) => part.type === "Glob" && part.extglob,
   );
   const structuredGlobPattern =
-    hasStructuredExtglob && !ctx.state.options.noglob
-      ? await expandWordForGlobbing(ctx, word)
-      : null;
-  const unescapedValue = hasStructuredExtglob
-    ? value
-    : unescapeGlobPattern(value);
+    hasStructuredExtglob && !ctx.state.options.noglob ? value : null;
+  const unescapedValue =
+    hasStructuredExtglob && ctx.state.options.noglob
+      ? value
+      : unescapeGlobPattern(value);
 
   if (!ctx.state.options.noglob && hasGlobParts) {
     const globPattern =

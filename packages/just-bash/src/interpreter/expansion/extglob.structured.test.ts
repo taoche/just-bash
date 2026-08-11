@@ -163,6 +163,13 @@ describe("structured extglob expansion", () => {
     await compareWithBash({}, 'i=0; set -f; : @($((i++))); echo "$i"');
   });
 
+  it("evaluates structured extglob substitutions once with an empty IFS", async () => {
+    await compareWithBash(
+      {},
+      "rm -f marker; IFS=; : @($(echo x >> marker; printf x)); cat marker",
+    );
+  });
+
   it("does not double-account case-pattern substitution stderr", async () => {
     const bash = new Bash({ executionLimits: { maxOutputSize: 4 } });
     const result = await bash.exec(
