@@ -69,4 +69,21 @@ describe("structured extglobs", () => {
       extglob: { operator: "@" },
     });
   });
+
+  it("does not split pipes inside parameter, bracket, or brace syntax", () => {
+    const glob = getGlob(
+      "echo x@(${value:-left|right}|[a|b]|prefix{one|two,three}|final)",
+    );
+
+    expect(glob.extglob?.alternatives).toHaveLength(4);
+    expect(glob.extglob?.alternatives[0].parts[0]).toMatchObject({
+      type: "ParameterExpansion",
+    });
+    expect(glob.extglob?.alternatives[1].parts).toEqual([
+      { type: "Glob", pattern: "[a|b]" },
+    ]);
+    expect(glob.extglob?.alternatives[2].parts).toEqual([
+      { type: "Literal", value: "prefix{one|two,three}" },
+    ]);
+  });
 });

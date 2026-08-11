@@ -93,6 +93,14 @@ describe("serialize", () => {
       roundTrip(
         "echo x@($(printf ')')|`printf ')'`|\"quoted|pipe\"|escaped\\|pipe|@(nested|alt))",
       ));
+    it("structured extglob with brace expansion", () =>
+      roundTrip("echo x@(f{oo,ar}|bar)"));
+    it("preserves nested extglob syntax", () => {
+      const script =
+        "echo x@(${value:-left|right}|[a|b]|prefix{one|two,three}|final)";
+
+      expect(serialize(parse(script))).toBe(script);
+    });
     it("brace expansion words", () => roundTrip("echo {a,b,c}"));
     it("brace expansion range", () => roundTrip("echo {1..10}"));
     it("brace expansion range with step", () => roundTrip("echo {1..10..2}"));

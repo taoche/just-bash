@@ -188,7 +188,7 @@ function serializeWordPart(part: WordPart, inDoubleQuotes: boolean): string {
       return part.user !== null ? `~${part.user}` : "~";
     case "Glob":
       if (part.extglob) {
-        return `${part.extglob.operator}(${part.extglob.alternatives.map(serializeWord).join("|")})`;
+        return `${part.extglob.operator}(${part.extglob.alternatives.map(serializeExtglobWord).join("|")})`;
       }
       return part.pattern;
     default: {
@@ -198,6 +198,42 @@ function serializeWordPart(part: WordPart, inDoubleQuotes: boolean): string {
       );
     }
   }
+}
+
+function serializeExtglobWord(node: WordNode): string {
+  return node.parts
+    .map((part) =>
+      part.type === "Literal"
+        ? escapeExtglobLiteral(part.value)
+        : serializeWordPart(part, false),
+    )
+    .join("");
+}
+
+function escapeExtglobLiteral(value: string): string {
+  let result = "";
+  let literal = "";
+  let braceDepth = 0;
+
+  for (const character of value) {
+    if (character === "{") {
+      if (braceDepth === 0) {
+        result += escapeLiteral(literal);
+        literal = "";
+      }
+      braceDepth += 1;
+      result += character;
+    } else if (character === "}" && braceDepth > 0) {
+      braceDepth -= 1;
+      result += character;
+    } else if (braceDepth > 0) {
+      result += character;
+    } else {
+      literal += character;
+    }
+  }
+
+  return result + escapeLiteral(literal);
 }
 
 /**
