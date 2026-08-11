@@ -36,10 +36,31 @@ export { parseArithNumber };
  *
  * Single quotes are left intact to trigger errors at parse/eval time.
  */
-function preprocessArithInput(input: string): string {
+function preprocessArithInput(p: Parser, input: string): string {
   let result = "";
   let i = 0;
   while (i < input.length) {
+    if (input[i] === "'") {
+      const end = input.indexOf("'", i + 1);
+      if (end === -1) {
+        return result + input.slice(i);
+      }
+      result += input.slice(i, end + 1);
+      i = end + 1;
+      continue;
+    }
+    if (input.slice(i, i + 2) === "$(" && input[i + 2] !== "(") {
+      const { endIndex } = p.parseCommandSubstitution(input, i);
+      result += input.slice(i, endIndex);
+      i = endIndex;
+      continue;
+    }
+    if (input[i] === "`") {
+      const { endIndex } = p.parseBacktickSubstitution(input, i);
+      result += input.slice(i, endIndex);
+      i = endIndex;
+      continue;
+    }
     if (input[i] === '"') {
       // Skip opening quote
       i++;
@@ -68,12 +89,12 @@ function preprocessArithInput(input: string): string {
  * Parse an arithmetic expression string into an AST node
  */
 export function parseArithmeticExpression(
-  _p: Parser,
+  p: Parser,
   input: string,
 ): ArithmeticExpressionNode {
   // Preprocess to handle double-quoted strings (bash text-substitution behavior)
-  const preprocessed = preprocessArithInput(input);
-  const { expr: expression, pos } = parseArithExpr(_p, preprocessed, 0);
+  const preprocessed = preprocessArithInput(p, input);
+  const { expr: expression, pos } = parseArithExpr(p, preprocessed, 0);
   // Validate that all input was consumed (skip trailing whitespace first)
   // IMPORTANT: Check against preprocessed string, not original input
   const finalPos = skipArithWhitespace(preprocessed, pos);
@@ -752,35 +773,27 @@ function parseArithPrimary(
     input.slice(currentPos, currentPos + 2) === "$(" &&
     input[currentPos + 2] !== "("
   ) {
-    currentPos += 2;
-    // Find matching )
-    let depth = 1;
-    const cmdStart = currentPos;
-    while (currentPos < input.length && depth > 0) {
-      if (input[currentPos] === "(") depth++;
-      else if (input[currentPos] === ")") depth--;
-      if (depth > 0) currentPos++;
-    }
-    const cmd = input.slice(cmdStart, currentPos);
-    currentPos++; // Skip )
+    const { part, endIndex } = p.parseCommandSubstitution(input, currentPos);
     return {
-      expr: { type: "ArithCommandSubst", command: cmd },
-      pos: currentPos,
+      expr: {
+        type: "ArithCommandSubst",
+        command: input.slice(currentPos + 2, endIndex - 1),
+        body: part.body,
+      },
+      pos: endIndex,
     };
   }
 
   // Backtick command substitution: `cmd`
   if (input[currentPos] === "`") {
-    currentPos++;
-    const cmdStart = currentPos;
-    while (currentPos < input.length && input[currentPos] !== "`") {
-      currentPos++;
-    }
-    const cmd = input.slice(cmdStart, currentPos);
-    if (input[currentPos] === "`") currentPos++;
+    const { part, endIndex } = p.parseBacktickSubstitution(input, currentPos);
     return {
-      expr: { type: "ArithCommandSubst", command: cmd },
-      pos: currentPos,
+      expr: {
+        type: "ArithCommandSubst",
+        command: input.slice(currentPos + 1, endIndex - 1),
+        body: part.body,
+      },
+      pos: endIndex,
     };
   }
 

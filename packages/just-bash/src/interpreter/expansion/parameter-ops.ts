@@ -373,9 +373,9 @@ export async function handleSubstring(
   operation: SubstringOp,
 ): Promise<string> {
   ctx.coverage?.hit("bash:expansion:substring");
-  const offset = await evaluateArithmetic(ctx, operation.offset.expression);
+  const offset = await evaluateArithmetic(ctx, operation.offset);
   const length = operation.length
-    ? await evaluateArithmetic(ctx, operation.length.expression)
+    ? await evaluateArithmetic(ctx, operation.length)
     : undefined;
 
   // Handle special case for ${@:offset} and ${*:offset}
