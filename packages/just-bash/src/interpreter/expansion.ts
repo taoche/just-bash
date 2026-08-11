@@ -328,6 +328,27 @@ async function expandStructuredExtglobForGlobbing(
   return `${extglob.operator}(${alternatives.join("|")})`;
 }
 
+async function expandWordWithStructuredExtglobs(
+  ctx: InterpreterContext,
+  word: WordNode,
+): Promise<string> {
+  const parts: string[] = [];
+  for (const part of word.parts) {
+    if (part.type === "Glob" && part.extglob) {
+      const alternatives: string[] = [];
+      for (const alternative of part.extglob.alternatives) {
+        alternatives.push(
+          await expandWordWithStructuredExtglobs(ctx, alternative),
+        );
+      }
+      parts.push(`${part.extglob.operator}(${alternatives.join("|")})`);
+    } else {
+      parts.push(await expandPart(ctx, part));
+    }
+  }
+  return parts.join("");
+}
+
 /**
  * Check if word parts contain brace expansion
  */
@@ -634,9 +655,14 @@ export async function expandRedirectTarget(
     // (value will be re-expanded below, but since there's only one value it's the same)
   }
 
-  const structuredGlobPattern = wordParts.some(
+  const hasStructuredExtglob = wordParts.some(
     (part) => part.type === "Glob" && part.extglob,
-  )
+  );
+  if (hasStructuredExtglob && (hasQuoted || ctx.state.options.noglob)) {
+    return { target: await expandWordWithStructuredExtglobs(ctx, word) };
+  }
+
+  const structuredGlobPattern = hasStructuredExtglob
     ? await expandWordForGlobbing(ctx, word)
     : null;
   const value = structuredGlobPattern

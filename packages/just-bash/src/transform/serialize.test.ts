@@ -469,6 +469,26 @@ describe("serialize", () => {
       expect(serialize(ast)).toBe("echo x@(updated|after)");
     });
 
+    it("escapes braces added by a transformed alternative", () => {
+      const ast = parse("echo x@(before|after)");
+      const command = ast.statements[0].pipelines[0].commands[0];
+      if (command.type !== "SimpleCommand") {
+        throw new Error("Expected a simple command");
+      }
+      const glob = command.args[0].parts[1];
+      if (glob.type !== "Glob" || !glob.extglob) {
+        throw new Error("Expected a structured extglob");
+      }
+      const alternative = glob.extglob.alternatives[0].parts[0];
+      if (alternative.type !== "Literal") {
+        throw new Error("Expected a literal alternative");
+      }
+
+      alternative.value = "{foo,bar}";
+
+      expect(serialize(ast)).toBe("echo x@(\\{foo,bar\\}|after)");
+    });
+
     it("preserves raw patterns on legacy glob nodes", () => {
       const ast = parse("echo placeholder");
       const command = ast.statements[0].pipelines[0].commands[0];

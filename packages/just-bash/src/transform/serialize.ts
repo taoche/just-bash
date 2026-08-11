@@ -188,7 +188,9 @@ function serializeWordPart(part: WordPart, inDoubleQuotes: boolean): string {
       return part.user !== null ? `~${part.user}` : "~";
     case "Glob":
       if (part.extglob) {
-        return `${part.extglob.operator}(${part.extglob.alternatives.map(serializeExtglobWord).join("|")})`;
+        const pattern = `${part.extglob.operator}(${part.extglob.alternatives.map(serializeWord).join("|")})`;
+        const rawPattern = `${part.extglob.operator}(${part.extglob.alternatives.map(serializeExtglobWordWithRawBraces).join("|")})`;
+        return rawPattern === part.pattern ? part.pattern : pattern;
       }
       return part.pattern;
     default: {
@@ -200,7 +202,7 @@ function serializeWordPart(part: WordPart, inDoubleQuotes: boolean): string {
   }
 }
 
-function serializeExtglobWord(node: WordNode): string {
+function serializeExtglobWordWithRawBraces(node: WordNode): string {
   return node.parts
     .map((part) =>
       part.type === "Literal"

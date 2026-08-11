@@ -47,14 +47,6 @@ export function findExtglobClose(value: string, openIndex: number): number {
       }
     }
 
-    if (character === "{") {
-      const close = findBraceEnd(value, index);
-      if (close !== -1) {
-        index = close;
-        continue;
-      }
-    }
-
     if (character === "(") {
       depth += 1;
     } else if (character === ")") {
@@ -72,6 +64,7 @@ export function splitExtglobAlternatives(
   maximum: number = Number.POSITIVE_INFINITY,
 ): string[] | null {
   const alternatives: string[] = [];
+  const braceEnds = findBraceEnds(content);
   let start = 0;
   let depth = 0;
   let quote: Quote | undefined;
@@ -118,12 +111,9 @@ export function splitExtglobAlternatives(
       }
     }
 
-    if (character === "{") {
-      const close = findBraceEnd(content, index);
-      if (close !== -1) {
-        index = close;
-        continue;
-      }
+    if (braceEnds[index] > 0) {
+      index = braceEnds[index] - 1;
+      continue;
     }
 
     if (character === "(") {
@@ -141,12 +131,12 @@ export function splitExtglobAlternatives(
   return alternatives;
 }
 
-function findBraceEnd(value: string, start: number): number {
-  let depth = 1;
-  let parenDepth = 0;
+function findBraceEnds(value: string): Int32Array {
+  const ends = new Int32Array(value.length);
+  const starts: number[] = [];
   let quote: Quote | undefined;
 
-  for (let index = start + 1; index < value.length; index++) {
+  for (let index = 0; index < value.length; index++) {
     const character = value[index];
 
     if (quote) {
@@ -176,7 +166,7 @@ function findBraceEnd(value: string, start: number): number {
 
     if (character === "`") {
       index = findBacktickClose(value, index);
-      if (index === -1) return -1;
+      if (index === -1) return ends;
       continue;
     }
 
@@ -188,20 +178,17 @@ function findBraceEnd(value: string, start: number): number {
       }
     }
 
-    if (character === "(") {
-      parenDepth += 1;
-    } else if (character === ")") {
-      if (parenDepth === 0) return -1;
-      parenDepth -= 1;
-    } else if (character === "{") {
-      depth += 1;
+    if (character === "{") {
+      starts.push(index);
     } else if (character === "}") {
-      depth -= 1;
-      if (depth === 0) return index;
+      const start = starts.pop();
+      if (start !== undefined) {
+        ends[start] = index + 1;
+      }
     }
   }
 
-  return -1;
+  return ends;
 }
 
 function findBracketExpressionEnd(value: string, start: number): number {

@@ -87,6 +87,13 @@ describe("structured extglob expansion", () => {
     );
   });
 
+  it("preserves expansion-produced backslashes in redirects", async () => {
+    await compareWithBash(
+      {},
+      "set -f; value='\\\\*'; printf hi > @($value); cat '@(\\*)'",
+    );
+  });
+
   it("keeps quoted alternatives literal before pathname expansion", async () => {
     await compareWithBash(
       { xfoo: "", xstar: "" },

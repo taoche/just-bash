@@ -190,8 +190,7 @@ export async function expandWordWithGlobImpl(
   // Word splitting based on IFS
   if (
     (hasCommandSub || hasArrayVar || hasParamExpansion) &&
-    !isIfsEmpty(ctx.state.env) &&
-    !hasStructuredExtglob
+    !isIfsEmpty(ctx.state.env)
   ) {
     const ifsChars = getIfs(ctx.state.env);
     const ifsPattern = deps.buildIfsCharClassPattern(ifsChars);
