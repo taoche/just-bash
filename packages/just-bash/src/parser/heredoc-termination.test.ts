@@ -83,6 +83,14 @@ describe("heredoc termination", () => {
     });
   });
 
+  it("does not fold an even number of unquoted trailing backslashes", () => {
+    expect(parseHeredoc("cat <<EOF\nbody\\\\\nEOF").terminated).toBe(true);
+  });
+
+  it("strips tabs after joining an unquoted continuation", () => {
+    expect(parseHeredoc("cat <<-EOF\n\tEO\\\n\tF").terminated).toBe(false);
+  });
+
   it("records missing quoted and tab-stripping delimiters", () => {
     expect(parseHeredoc("cat <<'EOF'\nbody").terminated).toBe(false);
     expect(parseHeredoc("cat <<-EOF\n\tbody").terminated).toBe(false);

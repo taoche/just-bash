@@ -124,6 +124,24 @@ EOF`);
     expect(result.exitCode).toBe(0);
   });
 
+  it("should preserve a delimiter after an even number of backslashes", async () => {
+    const env = new Bash();
+    const result = await env.exec("cat <<EOF\nbody\\\\\nEOF");
+
+    expect(result.stdout).toBe("body\\\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("should preserve tabs within an unquoted continuation", async () => {
+    const env = new Bash();
+    const result = await env.exec("cat <<-EOF\n\tEO\\\n\tF");
+
+    expect(result.stdout).toBe("EO\tF\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("should work in pipes", async () => {
     const env = new Bash();
     const result = await env.exec(`cat <<EOF | grep hello

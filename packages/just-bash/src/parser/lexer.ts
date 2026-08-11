@@ -1985,13 +1985,14 @@ export class Lexer {
             this.column++;
           }
 
-          const currentLine = heredoc.stripTabs
-            ? line.replace(/^\t+/, "")
-            : line;
-          lineToCheck += currentLine;
+          let trailingBackslashes = 0;
+          for (let index = line.length - 1; line[index] === "\\"; index -= 1) {
+            trailingBackslashes += 1;
+          }
+          lineToCheck += line;
           if (
             heredoc.quoted ||
-            !currentLine.endsWith("\\") ||
+            trailingBackslashes % 2 === 0 ||
             this.pos + 1 >= this.input.length
           ) {
             break;
@@ -2005,7 +2006,10 @@ export class Lexer {
         }
 
         // Check for delimiter
-        if (lineToCheck === heredoc.delimiter) {
+        const delimiterLine = heredoc.stripTabs
+          ? lineToCheck.replace(/^\t+/, "")
+          : lineToCheck;
+        if (delimiterLine === heredoc.delimiter) {
           terminated = true;
           // Consume the newline
           if (this.pos < this.input.length && this.input[this.pos] === "\n") {
