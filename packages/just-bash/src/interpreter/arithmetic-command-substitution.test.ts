@@ -1,7 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Bash } from "../Bash.js";
+import { evaluateArithmetic } from "./arithmetic.js";
+import type { InterpreterContext } from "./types.js";
 
 describe("arithmetic command substitution", () => {
+  it("keeps the legacy bodyless substitution fallback", async () => {
+    const execFn = vi.fn(async () => ({
+      stdout: "7\n",
+      stderr: "",
+      exitCode: 0,
+    }));
+    const ctx = {
+      state: { expansionStderr: "" },
+      execFn,
+    } as unknown as InterpreterContext;
+
+    const result = await evaluateArithmetic(ctx, {
+      type: "ArithCommandSubst",
+      command: "printf 7",
+    });
+
+    expect(result).toBe(7);
+    expect(execFn).toHaveBeenCalledWith("printf 7", { signal: undefined });
+  });
+
   it("evaluates output as arithmetic text in the current shell", async () => {
     const bash = new Bash();
 
@@ -88,6 +110,35 @@ describe("arithmetic command substitution", () => {
     `);
 
     expect(result.stdout).toBe("2\nouter\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("uses current functions and shell options", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      current_function() { printf '%s' "$1"; }
+      current_option() { shopt -q nullglob && printf 1; }
+      shopt -s nullglob
+      echo $(( $(current_function 1) + $(current_option) ))
+    `);
+
+    expect(result.stdout).toBe("2\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("does not execute a command substitution while reparsing arithmetic text", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      rm -f marker
+      echo $(( $(printf x >> marker; printf 1) + 1 ))
+      if [ "$(cat marker)" = x ]; then echo once; else echo repeated; fi
+    `);
+
+    expect(result.stdout).toBe("2\nonce\n");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });

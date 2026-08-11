@@ -25,6 +25,10 @@ import {
   skipArithWhitespace,
 } from "./arithmetic-primaries.js";
 import type { Parser } from "./parser.js";
+import {
+  scanBacktickSubstitutionEnd,
+  scanCommandSubstitutionEnd,
+} from "./parser-substitution.js";
 
 // Re-export for external use
 export { parseArithNumber };
@@ -50,13 +54,17 @@ function preprocessArithInput(p: Parser, input: string): string {
       continue;
     }
     if (input.slice(i, i + 2) === "$(" && input[i + 2] !== "(") {
-      const { endIndex } = p.parseCommandSubstitution(input, i);
+      const endIndex = scanCommandSubstitutionEnd(input, i, (message) =>
+        p.error(message),
+      );
       result += input.slice(i, endIndex);
       i = endIndex;
       continue;
     }
     if (input[i] === "`") {
-      const { endIndex } = p.parseBacktickSubstitution(input, i);
+      const endIndex = scanBacktickSubstitutionEnd(input, i, false, (message) =>
+        p.error(message),
+      );
       result += input.slice(i, endIndex);
       i = endIndex;
       continue;

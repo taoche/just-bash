@@ -11,8 +11,8 @@
  */
 
 import type {
-  CommandSubstitutionPart,
   ParameterExpansionPart,
+  ScriptNode,
   WordNode,
   WordPart,
 } from "../ast/types.js";
@@ -756,7 +756,7 @@ async function expandPart(
     }
 
     case "CommandSubstitution":
-      return executeCommandSubstitution(ctx, part);
+      return executeCommandSubstitution(ctx, part.body);
 
     case "ProcessSubstitution":
       return openProcessSubstitution(ctx, part);
@@ -815,14 +815,14 @@ async function expandPart(
   }
 }
 
-/** Execute a parsed command substitution with current-shell subshell semantics. */
+/** Execute a parsed command-substitution body with current-shell subshell semantics. */
 export async function executeCommandSubstitution(
   ctx: InterpreterContext,
-  part: CommandSubstitutionPart,
+  body: ScriptNode,
 ): Promise<string> {
   // Check for the special $(<file) shorthand pattern
   // This is equivalent to $(cat file) but reads the file directly
-  const fileReadShorthand = getFileReadShorthand(part.body);
+  const fileReadShorthand = getFileReadShorthand(body);
   if (fileReadShorthand) {
     try {
       // Expand the file path (handles $VAR, etc.)
@@ -872,7 +872,7 @@ export async function executeCommandSubstitution(
   // Bash suppresses verbose mode (set -v) inside command substitutions.
   ctx.state.suppressVerbose = true;
   try {
-    const result = await ctx.executeScript(part.body);
+    const result = await ctx.executeScript(body);
     // Restore the parent state while retaining the substitution's status.
     const exitCode = result.exitCode;
     restoreState();

@@ -20,11 +20,10 @@
  *   fully supported - variable expansion happens at parse time, not runtime.
  */
 
-import {
-  type ArithCommandSubstNode,
-  type ArithExpr,
-  type ArithmeticExpressionNode,
-  AST,
+import type {
+  ArithCommandSubstNode,
+  ArithExpr,
+  ArithmeticExpressionNode,
 } from "../ast/types.js";
 import {
   parseArithExpr,
@@ -32,6 +31,10 @@ import {
   parseArithNumber,
 } from "../parser/arithmetic-parser.js";
 import { Parser } from "../parser/parser.js";
+import {
+  scanBacktickSubstitutionEnd,
+  scanCommandSubstitutionEnd,
+} from "../parser/parser-substitution.js";
 import { ArithmeticError, NounsetError } from "./errors.js";
 import { expandDollarVarsInArithText } from "./expansion/arith-text-expansion.js";
 import {
@@ -95,6 +98,10 @@ function hasShellSyntax(text: string): boolean {
   return /[$`'"\\]/.test(text);
 }
 
+const throwArithmeticScanError = (message: string): never => {
+  throw new ArithmeticError(message);
+};
+
 async function expandArithLiteral(
   ctx: InterpreterContext,
   text: string,
@@ -157,7 +164,7 @@ async function executeArithCommandSubstitution(
   expr: ArithCommandSubstNode,
 ): Promise<string> {
   if (expr.body) {
-    return executeCommandSubstitution(ctx, AST.commandSubstitution(expr.body));
+    return executeCommandSubstitution(ctx, expr.body);
   }
   if (ctx.execFn) {
     const result = await ctx.execFn(expr.command, {
@@ -177,7 +184,6 @@ async function expandArithCommandSubstitutions(
   text: string,
   substitutions: ArithCommandSubstNode[],
 ): Promise<string> {
-  const parser = new Parser();
   let result = "";
   let position = 0;
   let literalStart = 0;
@@ -218,7 +224,11 @@ async function expandArithCommandSubstitutions(
       text[position + 1] === "(" &&
       text[position + 2] !== "("
     ) {
-      const { endIndex } = parser.parseCommandSubstitution(text, position);
+      const endIndex = scanCommandSubstitutionEnd(
+        text,
+        position,
+        throwArithmeticScanError,
+      );
       const substitution = substitutions[substitutionIndex++];
       if (!substitution?.body) {
         throw new ArithmeticError(
@@ -241,10 +251,11 @@ async function expandArithCommandSubstitutions(
       continue;
     }
     if (character === "`") {
-      const { endIndex } = parser.parseBacktickSubstitution(
+      const endIndex = scanBacktickSubstitutionEnd(
         text,
         position,
         inDoubleQuotes,
+        throwArithmeticScanError,
       );
       const substitution = substitutions[substitutionIndex++];
       if (!substitution?.body) {
