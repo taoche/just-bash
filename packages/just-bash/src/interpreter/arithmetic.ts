@@ -119,28 +119,26 @@ async function expandArithCommandSubstitutions(
   const parser = new Parser();
   let result = "";
   let position = 0;
+  let literalStart = 0;
   let substitutionIndex = 0;
   let inDoubleQuotes = false;
 
   while (position < text.length) {
     const character = text[position];
     if (character === "\\" && position + 1 < text.length) {
-      result += text.slice(position, position + 2);
       position += 2;
       continue;
     }
     if (character === "'") {
       const end = text.indexOf("'", position + 1);
       if (end === -1) {
-        return result + text.slice(position);
+        break;
       }
-      result += text.slice(position, end + 1);
       position = end + 1;
       continue;
     }
     if (character === '"') {
       inDoubleQuotes = !inDoubleQuotes;
-      result += character;
       position += 1;
       continue;
     }
@@ -156,6 +154,10 @@ async function expandArithCommandSubstitutions(
           "syntax error in arithmetic command substitution",
         );
       }
+      result += await expandDollarVarsInArithText(
+        ctx,
+        text.slice(literalStart, position),
+      );
       const output = await executeArithCommandSubstitution(ctx, substitution);
       if (hasShellSyntax(output)) {
         throw new ArithmeticError(
@@ -164,6 +166,7 @@ async function expandArithCommandSubstitutions(
       }
       result += output;
       position = endIndex;
+      literalStart = position;
       continue;
     }
     if (character === "`") {
@@ -178,6 +181,10 @@ async function expandArithCommandSubstitutions(
           "syntax error in arithmetic command substitution",
         );
       }
+      result += await expandDollarVarsInArithText(
+        ctx,
+        text.slice(literalStart, position),
+      );
       const output = await executeArithCommandSubstitution(ctx, substitution);
       if (hasShellSyntax(output)) {
         throw new ArithmeticError(
@@ -186,9 +193,9 @@ async function expandArithCommandSubstitutions(
       }
       result += output;
       position = endIndex;
+      literalStart = position;
       continue;
     }
-    result += character;
     position += 1;
   }
 
@@ -197,7 +204,9 @@ async function expandArithCommandSubstitutions(
       "syntax error in arithmetic command substitution",
     );
   }
-  return result;
+  return (
+    result + (await expandDollarVarsInArithText(ctx, text.slice(literalStart)))
+  );
 }
 
 async function evaluateArithmeticExpression(
@@ -235,12 +244,9 @@ async function evaluateArithmeticExpression(
     );
   }
 
-  const expandedText = hasDollarVars
-    ? await expandDollarVarsInArithText(ctx, originalText)
-    : originalText;
   const text = await expandArithCommandSubstitutions(
     ctx,
-    expandedText,
+    originalText,
     substitutions,
   );
   const parser = new Parser();

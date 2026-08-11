@@ -10,6 +10,8 @@ describe("arithmetic command substitution", () => {
       add() { printf '%s' "$number + 2"; }
       echo $(( $(add) * 3 ))
       echo $(( \`printf '1 + 2'\` * 3 ))
+      false
+      echo $(( $? + $(printf 1) ))
       mkdir nested
       cd nested
       echo $(( $(pwd | grep -c '/nested') ))
@@ -26,7 +28,7 @@ describe("arithmetic command substitution", () => {
       echo "\${value:$(printf '1 + 1'):1}"
     `);
 
-    expect(result.stdout).toBe("10\n7\n1\n6\n5\n0\npresent\n0\n0\n1\nc\n");
+    expect(result.stdout).toBe("10\n7\n2\n1\n6\n5\n0\npresent\n0\n0\n1\nc\n");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
@@ -40,6 +42,20 @@ describe("arithmetic command substitution", () => {
 
     expect(result.stdout).toBe("2\n");
     expect(result.stderr).toBe(")");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("isolates functions defined by a substitution", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      outer() { printf outer; }
+      echo $(( $(outer() { printf inner; }; printf 1) + 1 ))
+      echo "$(outer)"
+    `);
+
+    expect(result.stdout).toBe("2\nouter\n");
+    expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
 
