@@ -203,6 +203,16 @@ async function expandArithCommandSubstitutions(
       position += 1;
       continue;
     }
+    if (character === "$" && text[position + 1] === "{") {
+      let depth = 1;
+      position += 2;
+      while (position < text.length && depth > 0) {
+        if (text[position] === "{") depth += 1;
+        else if (text[position] === "}") depth -= 1;
+        position += 1;
+      }
+      continue;
+    }
     if (
       character === "$" &&
       text[position + 1] === "(" &&

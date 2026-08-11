@@ -50,6 +50,34 @@ describe("arithmetic command substitution", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("does not pair substitutions inside parameter expansions", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(
+      "arr=(4); echo $(( ${arr[$(printf 0)]} + $(printf 1) ))",
+    );
+
+    expect(result.stdout).toBe("5\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("isolates shell options and attributes", async () => {
+    const bash = new Bash();
+
+    const result = await bash.exec(`
+      echo $(( $(set -u; shopt -s nullglob; readonly value=1; printf 1) ))
+      echo $((missing + 1))
+      printf '<%s>\\n' no-match-*
+      value=2
+      echo "$value"
+    `);
+
+    expect(result.stdout).toBe("1\n1\n<no-match-*>\n2\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("isolates functions defined by a substitution", async () => {
     const bash = new Bash();
 

@@ -53,4 +53,26 @@ describe("arithmetic command substitution - Real Bash Comparison", () => {
       ].join("\n"),
     );
   });
+
+  it("does not pair substitutions inside parameter expansions", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(
+      env,
+      testDir,
+      "arr=(4); echo $(( ${arr[$(printf 0)]} + $(printf 1) ))",
+    );
+  });
+
+  it("isolates shell options changed by substitutions", async () => {
+    const env = await setupFiles(testDir, {});
+    await compareOutputs(
+      env,
+      testDir,
+      [
+        "echo $(( $(set -u; shopt -s nullglob; printf 1) ))",
+        "echo $((missing + 1))",
+        "printf '<%s>\\n' no-match-*",
+      ].join("\n"),
+    );
+  });
 });

@@ -28,7 +28,7 @@ import {
   ExecutionLimitError,
   ExitError,
 } from "./errors.js";
-import { cloneArrays } from "./helpers/array.js";
+import { beginIsolatedShellState } from "./state-transaction.js";
 
 /**
  * Check if a string exceeds the maximum allowed length.
@@ -867,24 +867,15 @@ export async function executeCommandSubstitution(
   }
   const savedDepth = ctx.substitutionDepth;
   ctx.substitutionDepth = currentDepth + 1;
-  const savedBashPid = ctx.state.bashPid;
+  const restoreState = beginIsolatedShellState(ctx.state);
   ctx.state.bashPid = ctx.state.nextVirtualPid++;
-  const savedEnv = new Map(ctx.state.env);
-  const savedArrays = cloneArrays(ctx.state.arrays);
-  const savedCwd = ctx.state.cwd;
-  const savedFunctions = new Map(ctx.state.functions);
   // Bash suppresses verbose mode (set -v) inside command substitutions.
-  const savedSuppressVerbose = ctx.state.suppressVerbose;
   ctx.state.suppressVerbose = true;
   try {
     const result = await ctx.executeScript(part.body);
     // Restore the parent state while retaining the substitution's status.
     const exitCode = result.exitCode;
-    ctx.state.env = savedEnv;
-    ctx.state.arrays = savedArrays;
-    ctx.state.cwd = savedCwd;
-    ctx.state.functions = savedFunctions;
-    ctx.state.suppressVerbose = savedSuppressVerbose;
+    restoreState();
     ctx.state.lastExitCode = exitCode;
     ctx.state.env.set("?", String(exitCode));
     // Command substitution stderr is emitted during expansion, before outer redirects.
@@ -892,7 +883,6 @@ export async function executeCommandSubstitution(
       ctx.state.expansionStderr =
         (ctx.state.expansionStderr || "") + result.stderr;
     }
-    ctx.state.bashPid = savedBashPid;
     ctx.substitutionDepth = savedDepth;
     const output = result.stdout.replace(/\n+$/, "");
     checkStringLength(
@@ -903,13 +893,8 @@ export async function executeCommandSubstitution(
     return output;
   } catch (error) {
     // Restore the parent state when executing the substitution fails as well.
-    ctx.state.env = savedEnv;
-    ctx.state.arrays = savedArrays;
-    ctx.state.cwd = savedCwd;
-    ctx.state.functions = savedFunctions;
-    ctx.state.bashPid = savedBashPid;
+    restoreState();
     ctx.substitutionDepth = savedDepth;
-    ctx.state.suppressVerbose = savedSuppressVerbose;
     // ExecutionLimitError must always propagate - these are safety limits.
     if (error instanceof ExecutionLimitError) {
       throw error;
