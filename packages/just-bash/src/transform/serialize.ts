@@ -379,7 +379,8 @@ function serializeRedirection(node: RedirectionNode): string {
       ? `'${heredoc.delimiter}'`
       : heredoc.delimiter;
     const content = serializeHeredocContent(heredoc.content, heredoc.quoted);
-    return `${fdStr}${node.operator}${delimStr}\n${content}${heredoc.delimiter}`;
+    const terminator = heredoc.terminated === false ? "" : heredoc.delimiter;
+    return `${fdStr}${node.operator}${delimStr}\n${content}${terminator}`;
   }
 
   if (node.operator === "<<<") {

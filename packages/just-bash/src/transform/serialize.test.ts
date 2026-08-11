@@ -415,6 +415,24 @@ describe("serialize", () => {
     it("heredoc with tabs", () => roundTrip("cat <<EOF\n\ttabbed\nEOF"));
     it("heredoc fed to command", () =>
       roundTrip("grep pattern <<EOF\nfoo pattern bar\nEOF"));
+    it("unterminated heredoc", () => {
+      const source = "cat <<EOF\nbody";
+      expect(serialize(parse(source))).toBe("cat <<EOF\nbody\n");
+      roundTrip(source);
+    });
+    it("unterminated empty heredoc", () => {
+      expect(serialize(parse("cat <<EOF"))).toBe("cat <<EOF\n");
+    });
+    it("legacy heredoc without termination evidence", () => {
+      const source = "cat <<EOF\nbody\nEOF";
+      const ast = parse(source);
+      const command = ast.statements[0].pipelines[0].commands[0];
+      if (command.type !== "SimpleCommand") throw new Error("expected command");
+      const target = command.redirections[0].target;
+      if (target.type !== "HereDoc") throw new Error("expected heredoc");
+      delete target.terminated;
+      expect(serialize(ast)).toBe(source);
+    });
   });
 
   describe("complex scripts", () => {

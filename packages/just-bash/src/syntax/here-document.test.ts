@@ -88,6 +88,24 @@ EOF`);
     expect(result.exitCode).toBe(0);
   });
 
+  it("should complete an unterminated final body line", async () => {
+    const env = new Bash();
+    const result = await env.exec("cat <<EOF\nbody");
+
+    expect(result.stdout).toBe("body\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("should execute an unterminated empty heredoc", async () => {
+    const env = new Bash();
+    const result = await env.exec("cat <<EOF");
+
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("should work in pipes", async () => {
     const env = new Bash();
     const result = await env.exec(`cat <<EOF | grep hello

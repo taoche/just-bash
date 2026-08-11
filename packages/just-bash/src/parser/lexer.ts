@@ -113,6 +113,8 @@ export interface Token {
   singleQuoted?: boolean;
   /** Quote-removed value for a here-document delimiter token. */
   heredocDelimiter?: string;
+  /** Whether a here-document content token ended at its delimiter. */
+  heredocTerminated?: boolean;
 }
 
 /**
@@ -341,6 +343,10 @@ export class Lexer {
       if (token) {
         tokens.push(token);
       }
+    }
+
+    if (pendingHeredocs.length > 0) {
+      this.readHeredocContent();
     }
 
     // Add EOF token
@@ -1958,6 +1964,7 @@ export class Lexer {
       const startLine = this.line;
       const startColumn = this.column;
       let content = "";
+      let terminated = false;
 
       // Read until we find the delimiter on its own line
       while (this.pos < this.input.length) {
@@ -1973,6 +1980,7 @@ export class Lexer {
         // Check for delimiter
         const lineToCheck = heredoc.stripTabs ? line.replace(/^\t+/, "") : line;
         if (lineToCheck === heredoc.delimiter) {
+          terminated = true;
           // Consume the newline
           if (this.pos < this.input.length && this.input[this.pos] === "\n") {
             this.pos++;
@@ -1983,6 +1991,15 @@ export class Lexer {
         }
 
         content += line;
+        if (this.pos < this.input.length && this.input[this.pos] === "\n") {
+          content += "\n";
+          this.pos++;
+          this.line++;
+          this.column = 1;
+        } else if (line.length > 0) {
+          // Bash completes a partial final heredoc line before executing it.
+          content += "\n";
+        }
         // Check heredoc size limit to prevent memory exhaustion
         if (content.length > this.maxHeredocSize) {
           throw new LexerError(
@@ -1990,12 +2007,6 @@ export class Lexer {
             startLine,
             startColumn,
           );
-        }
-        if (this.pos < this.input.length && this.input[this.pos] === "\n") {
-          content += "\n";
-          this.pos++;
-          this.line++;
-          this.column = 1;
         }
       }
 
@@ -2006,6 +2017,7 @@ export class Lexer {
         end: this.pos,
         line: startLine,
         column: startColumn,
+        heredocTerminated: terminated,
       });
     }
   }
