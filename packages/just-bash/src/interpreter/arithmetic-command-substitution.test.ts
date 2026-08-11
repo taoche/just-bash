@@ -10,6 +10,9 @@ describe("arithmetic command substitution", () => {
       add() { printf '%s' "$number + 2"; }
       echo $(( $(add) * 3 ))
       echo $(( \`printf '1 + 2'\` * 3 ))
+      unset number
+      echo $(( \${number:=2} + $(printf "$number") ))
+      echo "$number"
       false
       echo $(( $? + $(printf 1) ))
       mkdir nested
@@ -28,7 +31,9 @@ describe("arithmetic command substitution", () => {
       echo "\${value:$(printf '1 + 1'):1}"
     `);
 
-    expect(result.stdout).toBe("10\n7\n2\n1\n6\n5\n0\npresent\n0\n0\n1\nc\n");
+    expect(result.stdout).toBe(
+      "10\n7\n4\n2\n2\n1\n6\n5\n0\npresent\n0\n0\n1\nc\n",
+    );
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });

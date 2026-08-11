@@ -16,14 +16,19 @@ import type {
   WordNode,
   WordPart,
 } from "../ast/types.js";
+import { parseArithmeticExpression } from "../parser/arithmetic-parser.js";
+import { Parser } from "../parser/parser.js";
 import { GlobExpander } from "../shell/glob.js";
-import { evaluateArithmetic } from "./arithmetic.js";
+import {
+  evaluateArithmetic,
+  hasArithCommandSubstitutions,
+} from "./arithmetic.js";
 import {
   BadSubstitutionError,
   ExecutionLimitError,
   ExitError,
 } from "./errors.js";
-import { beginIsolatedShellState } from "./state-transaction.js";
+import { cloneArrays } from "./helpers/array.js";
 
 /**
  * Check if a string exceeds the maximum allowed length.
@@ -43,7 +48,10 @@ function checkStringLength(
 }
 
 import { analyzeWordParts } from "./expansion/analysis.js";
-import { expandSubscriptForAssocArray } from "./expansion/arith-text-expansion.js";
+import {
+  expandDollarVarsInArithText,
+  expandSubscriptForAssocArray,
+} from "./expansion/arith-text-expansion.js";
 import { expandBraceRange } from "./expansion/brace-range.js";
 import { getFileReadShorthand } from "./expansion/command-substitution.js";
 // Import from extracted modules
@@ -754,6 +762,23 @@ async function expandPart(
       return openProcessSubstitution(ctx, part);
 
     case "ArithmeticExpansion": {
+      if (!hasArithCommandSubstitutions(part.expression.expression)) {
+        const originalText = part.expression.originalText;
+        const hasDollarVars =
+          originalText &&
+          /\$[a-zA-Z_][a-zA-Z0-9_]*(?![{[(])/.test(originalText);
+        if (hasDollarVars) {
+          const expandedText = await expandDollarVarsInArithText(
+            ctx,
+            originalText,
+          );
+          const parser = new Parser();
+          const newExpr = parseArithmeticExpression(parser, expandedText);
+          return String(
+            await evaluateArithmetic(ctx, newExpr.expression, true),
+          );
+        }
+      }
       // true = expansion context, single quotes cause error
       return String(await evaluateArithmetic(ctx, part.expression, true));
     }
@@ -842,8 +867,12 @@ export async function executeCommandSubstitution(
   }
   const savedDepth = ctx.substitutionDepth;
   ctx.substitutionDepth = currentDepth + 1;
-  const restoreState = beginIsolatedShellState(ctx.state);
+  const savedBashPid = ctx.state.bashPid;
   ctx.state.bashPid = ctx.state.nextVirtualPid++;
+  const savedEnv = new Map(ctx.state.env);
+  const savedArrays = cloneArrays(ctx.state.arrays);
+  const savedCwd = ctx.state.cwd;
+  const savedFunctions = new Map(ctx.state.functions);
   // Bash suppresses verbose mode (set -v) inside command substitutions.
   const savedSuppressVerbose = ctx.state.suppressVerbose;
   ctx.state.suppressVerbose = true;
@@ -851,7 +880,10 @@ export async function executeCommandSubstitution(
     const result = await ctx.executeScript(part.body);
     // Restore the parent state while retaining the substitution's status.
     const exitCode = result.exitCode;
-    restoreState();
+    ctx.state.env = savedEnv;
+    ctx.state.arrays = savedArrays;
+    ctx.state.cwd = savedCwd;
+    ctx.state.functions = savedFunctions;
     ctx.state.suppressVerbose = savedSuppressVerbose;
     ctx.state.lastExitCode = exitCode;
     ctx.state.env.set("?", String(exitCode));
@@ -860,6 +892,7 @@ export async function executeCommandSubstitution(
       ctx.state.expansionStderr =
         (ctx.state.expansionStderr || "") + result.stderr;
     }
+    ctx.state.bashPid = savedBashPid;
     ctx.substitutionDepth = savedDepth;
     const output = result.stdout.replace(/\n+$/, "");
     checkStringLength(
@@ -870,7 +903,11 @@ export async function executeCommandSubstitution(
     return output;
   } catch (error) {
     // Restore the parent state when executing the substitution fails as well.
-    restoreState();
+    ctx.state.env = savedEnv;
+    ctx.state.arrays = savedArrays;
+    ctx.state.cwd = savedCwd;
+    ctx.state.functions = savedFunctions;
+    ctx.state.bashPid = savedBashPid;
     ctx.substitutionDepth = savedDepth;
     ctx.state.suppressVerbose = savedSuppressVerbose;
     // ExecutionLimitError must always propagate - these are safety limits.

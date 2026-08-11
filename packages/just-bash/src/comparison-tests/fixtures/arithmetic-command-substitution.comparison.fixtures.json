@@ -1,8 +1,8 @@
 {
-  "2299497ba3b2d314": {
-    "command": "number=4\nadd() { printf '%s' \"$number + 2\"; }\necho $(( $(add) * 3 ))\necho $(( `printf '1 + 2'` * 3 ))\nfalse\necho $(( $? + $(printf 1) ))\necho $(( $(printf \")\" >&2; printf 1) + 1 ))\nmkdir nested\ncd nested\necho $(( $(pwd | grep -c '/nested') ))\nnumber=5\necho $(( $(number=9; printf 1) + number ))\necho \"$number\"\nrm -f marker\necho $(( 0 && $(echo touched > marker; printf 1) ))\nif [ -f marker ]; then echo present; else echo absent; fi\nouter() { printf outer; }\necho $(( $(outer() { printf inner; }; printf 1) + 1 ))\necho \"$(outer)\"\n(( $(printf '2 + 1') * 2 ))\necho \"$?\"\nfor ((i=$(printf 0); i < $(printf 2); i += $(printf 1))); do echo \"$i\"; done\nvalue=abcd\necho \"${value:$(printf '1 + 1'):1}\"",
+  "acbddfa0190aa4a4": {
+    "command": "number=4\nadd() { printf '%s' \"$number + 2\"; }\necho $(( $(add) * 3 ))\necho $(( `printf '1 + 2'` * 3 ))\nunset number\necho $(( ${number:=2} + $(printf \"$number\") ))\necho \"$number\"\nfalse\necho $(( $? + $(printf 1) ))\necho $(( $(printf \")\" >&2; printf 1) + 1 ))\nmkdir nested\ncd nested\necho $(( $(pwd | grep -c '/nested') ))\nnumber=5\necho $(( $(number=9; printf 1) + number ))\necho \"$number\"\nrm -f marker\necho $(( 0 && $(echo touched > marker; printf 1) ))\nif [ -f marker ]; then echo present; else echo absent; fi\nouter() { printf outer; }\necho $(( $(outer() { printf inner; }; printf 1) + 1 ))\necho \"$(outer)\"\n(( $(printf '2 + 1') * 2 ))\necho \"$?\"\nfor ((i=$(printf 0); i < $(printf 2); i += $(printf 1))); do echo \"$i\"; done\nvalue=abcd\necho \"${value:$(printf '1 + 1'):1}\"",
     "files": {},
-    "stdout": "10\n7\n2\n2\n1\n6\n5\n0\npresent\n2\nouter\n0\n0\n1\nc\n",
+    "stdout": "10\n7\n4\n2\n2\n2\n1\n6\n5\n0\npresent\n2\nouter\n0\n0\n1\nc\n",
     "stderr": ")",
     "exitCode": 0
   }
