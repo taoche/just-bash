@@ -49,6 +49,15 @@ describe("heredoc termination", () => {
     });
   });
 
+  it("removes an unquoted trailing backslash continuation", () => {
+    expect(parseHeredoc("cat <<EOF\nbody\\")).toMatchObject({
+      terminated: false,
+      content: {
+        parts: [{ type: "Literal", value: "body" }],
+      },
+    });
+  });
+
   it("records missing quoted and tab-stripping delimiters", () => {
     expect(parseHeredoc("cat <<'EOF'\nbody").terminated).toBe(false);
     expect(parseHeredoc("cat <<-EOF\n\tbody").terminated).toBe(false);

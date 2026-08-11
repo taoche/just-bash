@@ -25,6 +25,14 @@ describe("multi-line quoted string whitespace", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("removes a backslash-newline continuation inside double quotes", async () => {
+    const env = new Bash();
+    const result = await env.exec('printf "%s" "first\\\nsecond"');
+
+    expect(result.stdout).toBe("firstsecond");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("preserves indentation through a variable assignment and expansion", async () => {
     const env = new Bash();
     const result = await env.exec(

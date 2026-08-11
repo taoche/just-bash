@@ -106,6 +106,24 @@ EOF`);
     expect(result.exitCode).toBe(0);
   });
 
+  it("should remove an unquoted trailing backslash continuation", async () => {
+    const env = new Bash();
+    const result = await env.exec("cat <<EOF\nbody\\");
+
+    expect(result.stdout).toBe("body");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("should preserve a quoted trailing backslash", async () => {
+    const env = new Bash();
+    const result = await env.exec("cat <<'EOF'\nbody\\");
+
+    expect(result.stdout).toBe("body\\\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("should work in pipes", async () => {
     const env = new Bash();
     const result = await env.exec(`cat <<EOF | grep hello
