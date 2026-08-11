@@ -223,7 +223,7 @@ export async function expandWordForRegex(
       const expanded = await expandPart(ctx, part);
       parts.push(escapeRegexChars(expanded));
     } else if (part.type === "Glob" && part.extglob) {
-      parts.push(await expandStructuredExtglob(ctx, part.extglob));
+      parts.push(await expandStructuredExtglobForGlobbing(ctx, part.extglob));
     } else {
       // Other parts: expand normally
       parts.push(await expandPart(ctx, part));
@@ -315,17 +315,6 @@ async function expandWordForGlobbing(
     }
   }
   return parts.join("");
-}
-
-async function expandStructuredExtglob(
-  ctx: InterpreterContext,
-  extglob: NonNullable<GlobPart["extglob"]>,
-): Promise<string> {
-  const alternatives: string[] = [];
-  for (const alternative of extglob.alternatives) {
-    alternatives.push(await expandWord(ctx, alternative));
-  }
-  return `${extglob.operator}(${alternatives.join("|")})`;
 }
 
 async function expandStructuredExtglobForGlobbing(
@@ -773,7 +762,7 @@ async function expandPart(
   }
 
   if (part.type === "Glob" && part.extglob) {
-    return expandStructuredExtglob(ctx, part.extglob);
+    return expandStructuredExtglobForGlobbing(ctx, part.extglob);
   }
 
   // Try simple cases first (Literal, SingleQuoted, Escaped, TildeExpansion, Glob)
@@ -1143,6 +1132,7 @@ async function expandParameterAsync(
         operation,
         expandWordPartsAsync,
         expandParameterAsync,
+        expandPart,
       );
       checkStringLength(
         result,

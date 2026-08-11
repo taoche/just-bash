@@ -1,17 +1,25 @@
+type Quote = "'" | '"' | "$'";
+
 /** Find the closing parenthesis for an extglob starting at `openIndex`. */
 export function findExtglobClose(value: string, openIndex: number): number {
   let depth = 1;
-  let quote: "'" | '"' | undefined;
+  let quote: Quote | undefined;
 
   for (let index = openIndex + 1; index < value.length; index++) {
     const character = value[index];
 
     if (quote) {
-      if (character === "\\" && quote === '"' && index + 1 < value.length) {
+      if (character === "\\" && quote !== "'" && index + 1 < value.length) {
         index += 1;
-      } else if (character === quote) {
+      } else if (character === (quote === "$'" ? "'" : quote)) {
         quote = undefined;
       }
+      continue;
+    }
+
+    if (character === "$" && value[index + 1] === "'") {
+      quote = "$'";
+      index += 1;
       continue;
     }
 
@@ -66,17 +74,23 @@ export function splitExtglobAlternatives(
   const alternatives: string[] = [];
   let start = 0;
   let depth = 0;
-  let quote: "'" | '"' | undefined;
+  let quote: Quote | undefined;
 
   for (let index = 0; index < content.length; index++) {
     const character = content[index];
 
     if (quote) {
-      if (character === "\\" && quote === '"' && index + 1 < content.length) {
+      if (character === "\\" && quote !== "'" && index + 1 < content.length) {
         index += 1;
-      } else if (character === quote) {
+      } else if (character === (quote === "$'" ? "'" : quote)) {
         quote = undefined;
       }
+      continue;
+    }
+
+    if (character === "$" && content[index + 1] === "'") {
+      quote = "$'";
+      index += 1;
       continue;
     }
 
@@ -129,17 +143,24 @@ export function splitExtglobAlternatives(
 
 function findBraceEnd(value: string, start: number): number {
   let depth = 1;
-  let quote: "'" | '"' | undefined;
+  let parenDepth = 0;
+  let quote: Quote | undefined;
 
   for (let index = start + 1; index < value.length; index++) {
     const character = value[index];
 
     if (quote) {
-      if (character === "\\" && quote === '"' && index + 1 < value.length) {
+      if (character === "\\" && quote !== "'" && index + 1 < value.length) {
         index += 1;
-      } else if (character === quote) {
+      } else if (character === (quote === "$'" ? "'" : quote)) {
         quote = undefined;
       }
+      continue;
+    }
+
+    if (character === "$" && value[index + 1] === "'") {
+      quote = "$'";
+      index += 1;
       continue;
     }
 
@@ -167,7 +188,12 @@ function findBraceEnd(value: string, start: number): number {
       }
     }
 
-    if (character === "{") {
+    if (character === "(") {
+      parenDepth += 1;
+    } else if (character === ")") {
+      if (parenDepth === 0) return -1;
+      parenDepth -= 1;
+    } else if (character === "{") {
       depth += 1;
     } else if (character === "}") {
       depth -= 1;

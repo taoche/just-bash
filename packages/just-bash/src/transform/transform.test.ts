@@ -230,6 +230,48 @@ describe("transform", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("executes transformed extglobs in parameter patterns", async () => {
+    const bash = new Bash();
+    bash.registerTransformPlugin({
+      name: "rewrite-pattern-extglob",
+      transform: ({ ast }) => {
+        const command = ast.statements[2].pipelines[0].commands[0];
+        if (
+          command.type !== "SimpleCommand" ||
+          command.args[1].parts[0].type !== "DoubleQuoted"
+        ) {
+          throw new Error("Expected a double-quoted parameter expansion");
+        }
+        const expansion = command.args[1].parts[0].parts[0];
+        if (
+          expansion.type !== "ParameterExpansion" ||
+          expansion.operation?.type !== "PatternRemoval"
+        ) {
+          throw new Error("Expected a pattern removal");
+        }
+        const glob = expansion.operation.pattern.parts[0];
+        if (!glob || glob.type !== "Glob" || !glob.extglob) {
+          throw new Error("Expected a structured extglob");
+        }
+        const alternative = glob.extglob.alternatives[0].parts[0];
+        if (alternative.type !== "Literal") {
+          throw new Error("Expected a literal alternative");
+        }
+        alternative.value = "bar";
+
+        return { ast };
+      },
+    });
+
+    const result = await bash.exec(
+      'shopt -s extglob; value=bar; printf "%s\\n" "${value##@(foo)}"',
+    );
+
+    expect(result.stdout).toBe("\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   describe("plugin chaining", () => {
     it("tee + collector: collector sees inserted tee and restore builtin", () => {
       const bash = new Bash();

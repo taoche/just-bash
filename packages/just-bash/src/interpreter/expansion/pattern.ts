@@ -1,3 +1,6 @@
+import type { GlobPart, WordPart } from "../../ast/types.js";
+import type { InterpreterContext } from "../types.js";
+
 /**
  * Pattern Matching
  *
@@ -14,6 +17,14 @@
  *
  * Callers should wrap regex compilation in try/catch to handle invalid patterns.
  */
+
+export async function expandGlobPart(
+  ctx: InterpreterContext,
+  part: GlobPart,
+  expandPart: (ctx: InterpreterContext, part: WordPart) => Promise<string>,
+): Promise<string> {
+  return part.extglob ? expandPart(ctx, part) : part.pattern;
+}
 
 /**
  * Convert a shell glob pattern to a regex string.

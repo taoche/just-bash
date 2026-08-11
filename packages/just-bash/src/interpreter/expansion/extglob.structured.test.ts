@@ -87,11 +87,25 @@ describe("structured extglob expansion", () => {
     );
   });
 
+  it("keeps quoted alternatives literal before pathname expansion", async () => {
+    await compareWithBash(
+      { xfoo: "", xstar: "" },
+      "value=foo; printf '<%s>\\n' x@('*'|$value)",
+    );
+  });
+
   it("preserves substitution stderr once before failglob", async () => {
     await compareWithBash(
       {},
       "printf '<%s>\\n' x@($(printf 'expanded\\n' >&2; printf missing))",
       ["failglob"],
+    );
+  });
+
+  it("forwards substitution stderr from case patterns", async () => {
+    await compareWithBash(
+      {},
+      "case foo in @($(printf 'err\\n' >&2; printf foo)|bar) ) printf matched;; esac",
     );
   });
 });

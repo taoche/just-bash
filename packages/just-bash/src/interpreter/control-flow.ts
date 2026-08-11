@@ -600,6 +600,10 @@ async function executeCaseBody(
   let exitCode = 0;
 
   const value = await expandWord(ctx, node.word);
+  if (ctx.state.expansionStderr) {
+    output.appendUnaccounted("", ctx.state.expansionStderr);
+    ctx.state.expansionStderr = "";
+  }
 
   // fallThrough tracks whether we should execute the next case body unconditionally
   // This happens when the previous case ended with ;& (unconditional fall-through)
@@ -618,6 +622,10 @@ async function executeCaseBody(
         let patternStr = hasStructuredExtglob
           ? await expandWordForPattern(ctx, pattern)
           : await expandWord(ctx, pattern);
+        if (ctx.state.expansionStderr) {
+          output.appendUnaccounted("", ctx.state.expansionStderr);
+          ctx.state.expansionStderr = "";
+        }
         // If the pattern is fully quoted, escape glob characters for literal matching
         if (isWordFullyQuoted(pattern)) {
           patternStr = escapeGlobChars(patternStr);

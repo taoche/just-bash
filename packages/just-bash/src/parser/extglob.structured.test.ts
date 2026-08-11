@@ -95,6 +95,20 @@ describe("structured extglobs", () => {
     expect(serialize(parse(script))).toBe(script);
   });
 
+  it("keeps an unmatched extglob brace out of a following suffix", () => {
+    const script = "echo @(foo{bar)}";
+    const glob = getGlob(script);
+
+    expect(glob.pattern).toBe("@(foo{bar)");
+    expect(glob.extglob?.alternatives).toHaveLength(1);
+  });
+
+  it("recognizes escaped quotes in ANSI-C alternatives", () => {
+    const glob = getGlob("echo x@($'foo\\'|bar'|baz)");
+
+    expect(glob.extglob?.alternatives).toHaveLength(2);
+  });
+
   it("limits structured alternatives before allocating their AST", () => {
     expect(() => parse(`echo @(${"|".repeat(MAX_TOKENS)})`)).toThrow(
       ParseException,
