@@ -308,7 +308,17 @@ export async function smartWordSplit(
           split.value,
         );
       }
-      const splitParts = split.words;
+      const flushedLeadingDelimiter =
+        split.hadLeadingDelimiter && currentWord !== "";
+      if (flushedLeadingDelimiter) {
+        pushSplitWord(ctx, words, currentWord);
+        currentWord = "";
+        hasProducedWord = true;
+      }
+      const splitParts =
+        flushedLeadingDelimiter && split.words[0] === ""
+          ? split.words.slice(1)
+          : split.words;
 
       if (splitParts.length === 0) {
         // Empty expansion produces nothing
@@ -327,8 +337,7 @@ export async function smartWordSplit(
 
         currentWord = splitParts[splitParts.length - 1];
       }
-      // Reset pending word break after processing mixed default parts
-      pendingWordBreak = false;
+      pendingWordBreak = split.hadTrailingDelimiter;
       prevWasQuotedEmpty = false;
     } else {
       // Splittable: split by IFS using extended version that tracks trailing delimiters
@@ -434,7 +443,12 @@ async function smartWordSplitWithUnquotedLiterals(
   ifsChars: string,
   _ifsPattern: string,
   expandPartFn: ExpandPartFn,
-): Promise<{ words: string[]; value: string }> {
+): Promise<{
+  words: string[];
+  value: string;
+  hadLeadingDelimiter: boolean;
+  hadTrailingDelimiter: boolean;
+}> {
   // Expand all parts and track if they are splittable
   // In this context, Literal parts ARE splittable
   type Segment = { value: string; isSplittable: boolean };
@@ -458,6 +472,7 @@ async function smartWordSplitWithUnquotedLiterals(
   let currentWord = "";
   let hasProducedWord = false;
   let pendingWordBreak = false;
+  let hadLeadingDelimiter = false;
 
   for (const segment of segments) {
     if (!segment.isSplittable) {
@@ -488,11 +503,23 @@ async function smartWordSplitWithUnquotedLiterals(
       }
 
       // Split by IFS using extended version
-      const { words: parts, hadTrailingDelimiter } = splitByIfsForExpansionEx(
+      const {
+        words: parts,
+        hadLeadingDelimiter: segmentHadLeadingDelimiter,
+        hadTrailingDelimiter,
+      } = splitByIfsForExpansionEx(
         segment.value,
         ifsChars,
         ctx.limits.maxArrayElements,
       );
+
+      if (
+        words.length === 0 &&
+        currentWord === "" &&
+        segmentHadLeadingDelimiter
+      ) {
+        hadLeadingDelimiter = true;
+      }
 
       if (parts.length === 0) {
         // Empty expansion produces nothing
@@ -525,5 +552,10 @@ async function smartWordSplitWithUnquotedLiterals(
     pushSplitWord(ctx, words, "");
   }
 
-  return { words, value: segments.map((segment) => segment.value).join("") };
+  return {
+    words,
+    value: segments.map((segment) => segment.value).join(""),
+    hadLeadingDelimiter,
+    hadTrailingDelimiter: pendingWordBreak,
+  };
 }

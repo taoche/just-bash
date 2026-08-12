@@ -183,6 +183,39 @@ describe("structured array state integrity", () => {
     });
   });
 
+  it("preserves leading IFS boundaries from mixed operation words", async () => {
+    const result = await new Bash().exec(`
+      x=' b'
+      unset value
+      set -- prefix=\${value:-""$x}
+      printf 'default=<%s>|<%s>\n' "$1" "$2"
+      value=set
+      set -- prefix=\${value:+""$x}
+      printf 'alternative=<%s>|<%s>\n' "$1" "$2"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "default=<prefix=>|<b>\nalternative=<prefix=>|<b>\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("preserves trailing IFS boundaries from mixed operation words", async () => {
+    const result = await new Bash().exec(`
+      x='b '
+      unset value
+      set -- prefix=\${value:-$x""}suffix
+      printf '<%s>|<%s>\n' "$1" "$2"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "<prefix=b>|<suffix>\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
   it("preserves associative nameref subscripts", async () => {
     const result = await new Bash().exec(`
       declare -A values=([key]=value)
