@@ -195,7 +195,6 @@ export function analyzeWordParts(parts: WordPart[]): WordPartsAnalysis {
       if (extglob) {
         for (const alternative of extglob.alternatives) {
           const analysis = analyzeWordParts(alternative.parts);
-          hasQuoted ||= analysis.hasQuoted;
           hasCommandSub ||= analysis.hasCommandSub;
           hasArrayVar ||= analysis.hasArrayVar;
           hasArrayAtExpansion ||= analysis.hasArrayAtExpansion;

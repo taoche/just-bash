@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Bash } from "../Bash.js";
+import { findExtglobClose } from "../parser/extglob.js";
 import { parse } from "../parser/parser.js";
 
 /**
@@ -171,6 +172,15 @@ describe("Parser Protection", () => {
       } catch {
         // The input is malformed.
       }
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeLessThan(1000);
+    });
+
+    it("should handle an unterminated extglob bracket expression", () => {
+      const input = `@(${"[".repeat(30_000)})`;
+
+      const start = Date.now();
+      expect(findExtglobClose(input, 1, true)).toBe(input.length - 1);
       const elapsed = Date.now() - start;
       expect(elapsed).toBeLessThan(1000);
     });

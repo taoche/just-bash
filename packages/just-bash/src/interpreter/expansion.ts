@@ -342,6 +342,19 @@ async function expandStructuredExtglobForGlobbing(
   return result;
 }
 
+async function expandStructuredExtglobValue(
+  ctx: InterpreterContext,
+  extglob: NonNullable<GlobPart["extglob"]>,
+): Promise<string> {
+  const alternatives: string[] = [];
+  for (const alternative of extglob.alternatives) {
+    alternatives.push(await expandWordAsync(ctx, alternative));
+  }
+  const result = `${extglob.operator}(${alternatives.join("|")})`;
+  checkStringLength(result, ctx.limits.maxStringLength, "word expansion");
+  return result;
+}
+
 async function expandWordWithStructuredExtglobs(
   ctx: InterpreterContext,
   word: WordNode,
@@ -877,7 +890,7 @@ async function expandPart(
   if (part.type === "Glob") {
     const extglob = getCurrentExtglob(part);
     if (extglob) {
-      return expandStructuredExtglobForGlobbing(ctx, extglob);
+      return expandStructuredExtglobValue(ctx, extglob);
     }
   }
 

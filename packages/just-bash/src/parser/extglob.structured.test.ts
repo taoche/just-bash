@@ -91,6 +91,18 @@ describe("structured extglobs", () => {
     ]);
   });
 
+  it("keeps parameter and command substitutions opaque while scanning", () => {
+    const glob = getGlob("echo @(${value:-)}|\"$(printf ')')\"|final)");
+
+    expect(glob.extglob?.alternatives).toHaveLength(3);
+    expect(glob.extglob?.alternatives[0].parts[0]).toMatchObject({
+      type: "ParameterExpansion",
+    });
+    expect(glob.extglob?.alternatives[1].parts[0]).toMatchObject({
+      type: "DoubleQuoted",
+    });
+  });
+
   it("splits pipes inside ordinary balanced braces", () => {
     const glob = getGlob("echo @({foo|bar})");
 

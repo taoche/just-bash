@@ -1,5 +1,115 @@
 type Quote = "'" | '"' | "$'";
 
+function findParameterExpansionEnd(
+  value: string,
+  start: number,
+  stopAtNewline: boolean,
+): number {
+  let depth = 1;
+  let quote: Quote | undefined;
+
+  for (let index = start + 2; index < value.length; index++) {
+    const character = value[index];
+    if (quote) {
+      if (character === "\\" && quote !== "'" && index + 1 < value.length) {
+        index += 1;
+      } else if (character === (quote === "$'" ? "'" : quote)) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (character === "$" && value[index + 1] === "'") {
+      quote = "$'";
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (character === "\\" && index + 1 < value.length) {
+      index += 1;
+      continue;
+    }
+    if (stopAtNewline && character === "\n") {
+      return -1;
+    }
+    if (character === "{") depth += 1;
+    else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+
+  return -1;
+}
+
+function findCommandSubstitutionEnd(
+  value: string,
+  start: number,
+  stopAtNewline: boolean,
+): number {
+  let depth = 1;
+  let quote: Quote | undefined;
+
+  for (let index = start + 2; index < value.length; index++) {
+    const character = value[index];
+    if (quote) {
+      if (character === "\\" && quote !== "'" && index + 1 < value.length) {
+        index += 1;
+      } else if (character === (quote === "$'" ? "'" : quote)) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (character === "$" && value[index + 1] === "'") {
+      quote = "$'";
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (character === "\\" && index + 1 < value.length) {
+      index += 1;
+      continue;
+    }
+    if (stopAtNewline && character === "\n") {
+      return -1;
+    }
+    if (character === "$" && value[index + 1] === "{") {
+      const end = findParameterExpansionEnd(value, index, stopAtNewline);
+      if (end === -1) return -1;
+      index = end;
+      continue;
+    }
+    if (
+      character === "$" &&
+      value[index + 1] === "(" &&
+      value[index + 2] !== "("
+    ) {
+      const end = findCommandSubstitutionEnd(value, index, stopAtNewline);
+      if (end === -1) return -1;
+      index = end;
+      continue;
+    }
+    if (character === "`") {
+      const end = findBacktickClose(value, index, stopAtNewline);
+      if (end === -1) return -1;
+      index = end;
+      continue;
+    }
+    if (character === "(") depth += 1;
+    else if (character === ")") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+
+  return -1;
+}
+
 /** Find the closing parenthesis for an extglob starting at `openIndex`. */
 export function findExtglobClose(
   value: string,
@@ -8,6 +118,7 @@ export function findExtglobClose(
 ): number {
   let depth = 1;
   let quote: Quote | undefined;
+  let hasUnterminatedBracket = false;
 
   for (let index = openIndex + 1; index < value.length; index++) {
     const character = value[index];
@@ -41,18 +152,37 @@ export function findExtglobClose(
       return -1;
     }
 
+    if (character === "$" && value[index + 1] === "{") {
+      const end = findParameterExpansionEnd(value, index, stopAtNewline);
+      if (end === -1) return -1;
+      index = end;
+      continue;
+    }
+
+    if (
+      character === "$" &&
+      value[index + 1] === "(" &&
+      value[index + 2] !== "("
+    ) {
+      const end = findCommandSubstitutionEnd(value, index, stopAtNewline);
+      if (end === -1) return -1;
+      index = end;
+      continue;
+    }
+
     if (character === "`") {
-      index = findBacktickClose(value, index);
+      index = findBacktickClose(value, index, stopAtNewline);
       if (index === -1) return -1;
       continue;
     }
 
-    if (character === "[") {
-      const close = findBracketExpressionEnd(value, index);
+    if (character === "[" && !hasUnterminatedBracket) {
+      const close = findBracketExpressionEnd(value, index, stopAtNewline);
       if (close !== -1) {
         index = close;
         continue;
       }
+      hasUnterminatedBracket = true;
     }
 
     if (character === "(") {
@@ -76,6 +206,7 @@ export function splitExtglobAlternatives(
   let start = 0;
   let depth = 0;
   let quote: Quote | undefined;
+  let hasUnterminatedBracket = false;
 
   for (let index = 0; index < content.length; index++) {
     const character = content[index];
@@ -105,18 +236,37 @@ export function splitExtglobAlternatives(
       continue;
     }
 
+    if (character === "$" && content[index + 1] === "{") {
+      const end = findParameterExpansionEnd(content, index, false);
+      if (end === -1) break;
+      index = end;
+      continue;
+    }
+
+    if (
+      character === "$" &&
+      content[index + 1] === "(" &&
+      content[index + 2] !== "("
+    ) {
+      const end = findCommandSubstitutionEnd(content, index, false);
+      if (end === -1) break;
+      index = end;
+      continue;
+    }
+
     if (character === "`") {
-      index = findBacktickClose(content, index);
+      index = findBacktickClose(content, index, false);
       if (index === -1) break;
       continue;
     }
 
-    if (character === "[") {
-      const close = findBracketExpressionEnd(content, index);
+    if (character === "[" && !hasUnterminatedBracket) {
+      const close = findBracketExpressionEnd(content, index, false);
       if (close !== -1) {
         index = close;
         continue;
       }
+      hasUnterminatedBracket = true;
     }
 
     const braceEnd = braceEnds.get(index);
@@ -151,6 +301,7 @@ function findBraceEnds(value: string): Map<number, number> {
     content: string[];
   }> = [];
   let quote: Quote | undefined;
+  let hasUnterminatedBracket = false;
 
   for (let index = 0; index < value.length; index++) {
     const character = value[index];
@@ -188,8 +339,28 @@ function findBraceEnds(value: string): Map<number, number> {
       continue;
     }
 
+    if (character === "$" && value[index + 1] === "{") {
+      const end = findParameterExpansionEnd(value, index, false);
+      if (end === -1) return ends;
+      if (brace) brace.content.push("\0");
+      index = end;
+      continue;
+    }
+
+    if (
+      character === "$" &&
+      value[index + 1] === "(" &&
+      value[index + 2] !== "("
+    ) {
+      const end = findCommandSubstitutionEnd(value, index, false);
+      if (end === -1) return ends;
+      if (brace) brace.content.push("\0");
+      index = end;
+      continue;
+    }
+
     if (character === "`") {
-      const close = findBacktickClose(value, index);
+      const close = findBacktickClose(value, index, false);
       if (close === -1) return ends;
       if (brace) {
         brace.content.push("\0");
@@ -200,8 +371,8 @@ function findBraceEnds(value: string): Map<number, number> {
       continue;
     }
 
-    if (character === "[") {
-      const close = findBracketExpressionEnd(value, index);
+    if (character === "[" && !hasUnterminatedBracket) {
+      const close = findBracketExpressionEnd(value, index, false);
       if (close !== -1) {
         if (brace) {
           brace.content.push("\0");
@@ -211,6 +382,7 @@ function findBraceEnds(value: string): Map<number, number> {
         index = close;
         continue;
       }
+      hasUnterminatedBracket = true;
     }
 
     if (character === "{") {
@@ -254,12 +426,19 @@ function isBraceRangeContent(value: string): boolean {
   );
 }
 
-function findBracketExpressionEnd(value: string, start: number): number {
+function findBracketExpressionEnd(
+  value: string,
+  start: number,
+  stopAtNewline: boolean,
+): number {
   let index = start + 1;
   if (value[index] === "!" || value[index] === "^") index += 1;
   if (value[index] === "]") index += 1;
 
   while (index < value.length) {
+    if (stopAtNewline && value[index] === "\n") {
+      return -1;
+    }
     if (value[index] === "\\" && index + 1 < value.length) {
       index += 2;
       continue;
@@ -286,8 +465,15 @@ function findBracketExpressionEnd(value: string, start: number): number {
   return -1;
 }
 
-function findBacktickClose(value: string, start: number): number {
+function findBacktickClose(
+  value: string,
+  start: number,
+  stopAtNewline: boolean,
+): number {
   for (let index = start + 1; index < value.length; index++) {
+    if (stopAtNewline && value[index] === "\n") {
+      return -1;
+    }
     if (value[index] === "\\" && index + 1 < value.length) {
       index += 1;
     } else if (value[index] === "`") {

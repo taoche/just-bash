@@ -1,5 +1,6 @@
 import type {
   CommandNode,
+  ConditionalExpressionNode,
   PipelineNode,
   ScriptNode,
   StatementNode,
@@ -100,6 +101,9 @@ export class CommandCollectorPlugin
       case "Case":
         this.walkWordParts(node.word.parts, commands);
         for (const item of node.items) {
+          for (const pattern of item.patterns) {
+            this.walkWordParts(pattern.parts, commands);
+          }
           for (const s of item.body) this.walkStatement(s, commands);
         }
         break;
@@ -107,11 +111,42 @@ export class CommandCollectorPlugin
       case "Group":
         for (const s of node.body) this.walkStatement(s, commands);
         break;
-      case "ArithmeticCommand":
       case "ConditionalCommand":
+        this.walkConditionalExpression(node.expression, commands);
+        break;
+      case "ArithmeticCommand":
         break;
       case "FunctionDef":
         this.walkCommand(node.body, commands);
+        break;
+    }
+  }
+
+  private walkConditionalExpression(
+    node: ConditionalExpressionNode,
+    commands: Set<string>,
+  ): void {
+    switch (node.type) {
+      case "CondBinary":
+        this.walkWordParts(node.left.parts, commands);
+        this.walkWordParts(node.right.parts, commands);
+        break;
+      case "CondUnary":
+        this.walkWordParts(node.operand.parts, commands);
+        break;
+      case "CondNot":
+        this.walkConditionalExpression(node.operand, commands);
+        break;
+      case "CondGroup":
+        this.walkConditionalExpression(node.expression, commands);
+        break;
+      case "CondAnd":
+      case "CondOr":
+        this.walkConditionalExpression(node.left, commands);
+        this.walkConditionalExpression(node.right, commands);
+        break;
+      case "CondWord":
+        this.walkWordParts(node.word.parts, commands);
         break;
     }
   }

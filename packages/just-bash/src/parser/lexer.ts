@@ -2112,6 +2112,15 @@ export class Lexer {
     while (pos < len) {
       const c = input[pos];
 
+      if (c === "(" && pos > start && "@*+?!".includes(input[pos - 1])) {
+        const extglob = this.scanExtglobPattern(pos);
+        if (extglob !== null) {
+          col += extglob.content.length;
+          pos = extglob.end;
+          continue;
+        }
+      }
+
       // Stop at word boundaries
       if (
         c === " " ||

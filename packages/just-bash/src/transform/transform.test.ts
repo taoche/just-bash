@@ -199,6 +199,17 @@ describe("transform", () => {
       expect(result.script).toBe("echo @(bar)");
       expect(result.metadata.commands).toEqual(["echo"]);
     });
+
+    it("collects commands from case patterns and conditional operands", () => {
+      const bash = new Bash();
+      bash.registerTransformPlugin(new CommandCollectorPlugin());
+
+      const result = bash.transform(
+        "[[ x == @($(printf conditional)) ]] && :; case x in @($(printf case))) :;; esac",
+      );
+
+      expect(result.metadata.commands).toEqual([":", "printf"]);
+    });
   });
 
   it("executes transformed extglobs in patterns and assignments", async () => {

@@ -103,6 +103,23 @@ describe("structured extglob expansion", () => {
     );
   });
 
+  it("keeps quoted alternatives unescaped in ordinary values", async () => {
+    const bash = new Bash();
+    const result = await bash.exec(
+      "shopt -s extglob; value=@('*'); printf '%s\\n' \"$value\"",
+    );
+
+    expect(result).toMatchObject({
+      stdout: "@(*)\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("expands outer braces when an alternative is quoted", async () => {
+    await compareWithBash({ ax: "", by: "" }, "printf '<%s>\\n' {a,b}@('x'|y)");
+  });
+
   it("splits unquoted values before expanding the extglob", async () => {
     await compareWithBash(
       { "bar.cc": "", "bar.h": "" },
@@ -111,13 +128,16 @@ describe("structured extglob expansion", () => {
   });
 
   it("rejects split structured redirects before honoring set -f", async () => {
-    // Bash adds a version-dependent source-line prefix to this diagnostic.
-    await compareWithBash(
-      {},
+    const bash = new Bash();
+    const result = await bash.exec(
       "value='a b'; set -f; printf hi > @($value)",
-      [],
-      "bash: @($value): ambiguous redirect\n",
     );
+
+    expect(result).toMatchObject({
+      stdout: "",
+      stderr: "bash: @($value): ambiguous redirect\n",
+      exitCode: 1,
+    });
   });
 
   it("preserves substitution stderr once before failglob", async () => {
