@@ -1,16 +1,18 @@
+import { findCommandSubstitutionEnd } from "./parser-substitution.js";
+
 type Quote = "'" | '"' | "$'";
-const MAX_SUBSTITUTION_SCAN_DEPTH = 200;
 
 function findParameterExpansionEnd(
   value: string,
   start: number,
-  stopAtNewline: boolean,
-  substitutionDepth = 0,
+  _stopAtNewline: boolean,
+  consumeScanWork?: (count: number) => void,
 ): number {
   let depth = 1;
   let quote: Quote | undefined;
 
   for (let index = start + 2; index < value.length; index++) {
+    consumeScanWork?.(1);
     const character = value[index];
     if (quote) {
       if (character === "\\" && quote !== "'" && index + 1 < value.length) {
@@ -33,20 +35,12 @@ function findParameterExpansionEnd(
       index += 1;
       continue;
     }
-    if (stopAtNewline && character === "\n") {
-      return -1;
-    }
     if (
       character === "$" &&
       value[index + 1] === "(" &&
       value[index + 2] !== "("
     ) {
-      const end = findCommandSubstitutionEnd(
-        value,
-        index,
-        stopAtNewline,
-        substitutionDepth + 1,
-      );
+      const end = findCommandSubstitutionEnd(value, index, consumeScanWork);
       if (end === -1) return -1;
       index = end;
       continue;
@@ -61,92 +55,19 @@ function findParameterExpansionEnd(
   return -1;
 }
 
-export function findCommandSubstitutionEnd(
-  value: string,
-  start: number,
-  stopAtNewline: boolean,
-  substitutionDepth = 0,
-): number {
-  if (substitutionDepth >= MAX_SUBSTITUTION_SCAN_DEPTH) {
-    return -1;
-  }
-  let depth = 1;
-  let quote: Quote | undefined;
-
-  for (let index = start + 2; index < value.length; index++) {
-    const character = value[index];
-    if (quote) {
-      if (character === "\\" && quote !== "'" && index + 1 < value.length) {
-        index += 1;
-      } else if (character === (quote === "$'" ? "'" : quote)) {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (character === "$" && value[index + 1] === "'") {
-      quote = "$'";
-      index += 1;
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = character;
-      continue;
-    }
-    if (character === "\\" && index + 1 < value.length) {
-      index += 1;
-      continue;
-    }
-    if (stopAtNewline && character === "\n") {
-      return -1;
-    }
-    if (character === "$" && value[index + 1] === "{") {
-      const end = findParameterExpansionEnd(value, index, stopAtNewline);
-      if (end === -1) return -1;
-      index = end;
-      continue;
-    }
-    if (
-      character === "$" &&
-      value[index + 1] === "(" &&
-      value[index + 2] !== "("
-    ) {
-      const end = findCommandSubstitutionEnd(
-        value,
-        index,
-        stopAtNewline,
-        substitutionDepth + 1,
-      );
-      if (end === -1) return -1;
-      index = end;
-      continue;
-    }
-    if (character === "`") {
-      const end = findBacktickClose(value, index, stopAtNewline);
-      if (end === -1) return -1;
-      index = end;
-      continue;
-    }
-    if (character === "(") depth += 1;
-    else if (character === ")") {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-
-  return -1;
-}
-
 /** Find the closing parenthesis for an extglob starting at `openIndex`. */
 export function findExtglobClose(
   value: string,
   openIndex: number,
   stopAtNewline = false,
+  consumeScanWork?: (count: number) => void,
 ): number {
   let depth = 1;
   let quote: Quote | undefined;
   let hasUnterminatedBracket = false;
 
   for (let index = openIndex + 1; index < value.length; index++) {
+    consumeScanWork?.(1);
     const character = value[index];
 
     if (quote) {
@@ -156,7 +77,7 @@ export function findExtglobClose(
         value[index + 1] === "(" &&
         value[index + 2] !== "("
       ) {
-        const end = findCommandSubstitutionEnd(value, index, stopAtNewline);
+        const end = findCommandSubstitutionEnd(value, index, consumeScanWork);
         if (end === -1) return -1;
         index = end;
         continue;
@@ -185,12 +106,13 @@ export function findExtglobClose(
       continue;
     }
 
-    if (stopAtNewline && character === "\n") {
-      return -1;
-    }
-
     if (character === "$" && value[index + 1] === "{") {
-      const end = findParameterExpansionEnd(value, index, stopAtNewline);
+      const end = findParameterExpansionEnd(
+        value,
+        index,
+        stopAtNewline,
+        consumeScanWork,
+      );
       if (end === -1) return -1;
       index = end;
       continue;
@@ -201,7 +123,7 @@ export function findExtglobClose(
       value[index + 1] === "(" &&
       value[index + 2] !== "("
     ) {
-      const end = findCommandSubstitutionEnd(value, index, stopAtNewline);
+      const end = findCommandSubstitutionEnd(value, index, consumeScanWork);
       if (end === -1) return -1;
       index = end;
       continue;
@@ -255,7 +177,7 @@ export function splitExtglobAlternatives(
         content[index + 1] === "(" &&
         content[index + 2] !== "("
       ) {
-        const end = findCommandSubstitutionEnd(content, index, false);
+        const end = findCommandSubstitutionEnd(content, index);
         if (end === -1) break;
         index = end;
         continue;
@@ -296,7 +218,7 @@ export function splitExtglobAlternatives(
       content[index + 1] === "(" &&
       content[index + 2] !== "("
     ) {
-      const end = findCommandSubstitutionEnd(content, index, false);
+      const end = findCommandSubstitutionEnd(content, index);
       if (end === -1) break;
       index = end;
       continue;
@@ -403,7 +325,7 @@ function findBraceEnds(value: string): Map<number, number> {
       value[index + 1] === "(" &&
       value[index + 2] !== "("
     ) {
-      const end = findCommandSubstitutionEnd(value, index, false);
+      const end = findCommandSubstitutionEnd(value, index);
       if (end === -1) return ends;
       if (brace) brace.rangeContent = undefined;
       index = end;

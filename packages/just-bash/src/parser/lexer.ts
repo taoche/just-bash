@@ -10,8 +10,11 @@
  * - Escape sequences
  */
 
-import { findCommandSubstitutionEnd, findExtglobClose } from "./extglob.js";
-import { readHeredocDelimiter } from "./parser-substitution.js";
+import { findExtglobClose } from "./extglob.js";
+import {
+  findCommandSubstitutionEnd,
+  readHeredocDelimiter,
+} from "./parser-substitution.js";
 
 // Default max heredoc size to prevent memory exhaustion (10MB)
 const DEFAULT_MAX_HEREDOC_SIZE = 10_485_760;
@@ -19,6 +22,13 @@ const DEFAULT_MAX_HEREDOC_SIZE = 10_485_760;
 export interface LexerOptions {
   /** Maximum heredoc size in bytes (default: 10MB) */
   maxHeredocSize?: number;
+  extglobScanBudget?: {
+    chargeExtglobScanWork: (
+      count: number,
+      line?: number,
+      column?: number,
+    ) => void;
+  };
 }
 
 export enum TokenType {
@@ -310,10 +320,12 @@ export class Lexer {
   // When > 0, we're inside (( )) and need to track nested parens
   private dparenDepth = 0;
   private maxHeredocSize: number;
+  private extglobScanBudget: LexerOptions["extglobScanBudget"];
 
   constructor(input: string, options?: LexerOptions) {
     this.input = input;
     this.maxHeredocSize = options?.maxHeredocSize ?? DEFAULT_MAX_HEREDOC_SIZE;
+    this.extglobScanBudget = options?.extglobScanBudget;
   }
 
   /**
@@ -1670,7 +1682,7 @@ export class Lexer {
         while (depth > 0 && pos < len) {
           const c = input[pos];
           if (c === "$" && input[pos + 1] === "(") {
-            const end = findCommandSubstitutionEnd(input, pos, false);
+            const end = findCommandSubstitutionEnd(input, pos);
             if (end !== -1) {
               const substitution = input.slice(pos, end + 1);
               value += substitution;
@@ -2403,7 +2415,13 @@ export class Lexer {
   private scanExtglobPattern(
     startPos: number,
   ): { content: string; end: number } | null {
-    const close = findExtglobClose(this.input, startPos, true);
+    const close = findExtglobClose(this.input, startPos, false, (count) =>
+      this.extglobScanBudget?.chargeExtglobScanWork(
+        count,
+        this.line,
+        this.column,
+      ),
+    );
     if (close === -1) {
       return null;
     }

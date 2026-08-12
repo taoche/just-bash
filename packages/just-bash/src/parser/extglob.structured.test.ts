@@ -105,6 +105,20 @@ describe("structured extglobs", () => {
     });
   });
 
+  it("keeps case patterns and heredoc bodies inside command substitutions", () => {
+    const caseGlob = getGlob("echo @($(case x in x) printf foo;; esac)|bar)");
+    const heredocGlob = getGlob("echo @($(cat <<'EOF'\n)\nEOF\n)|bar)");
+
+    expect(caseGlob.extglob?.alternatives).toHaveLength(2);
+    expect(heredocGlob.extglob?.alternatives).toHaveLength(2);
+  });
+
+  it("accepts balanced multiline extglobs", () => {
+    const glob = getGlob("echo @(a|\nb)");
+
+    expect(glob.extglob?.alternatives).toHaveLength(2);
+  });
+
   it("splits pipes inside ordinary balanced braces", () => {
     const glob = getGlob("echo @({foo|bar})");
 
@@ -140,12 +154,18 @@ describe("structured extglobs", () => {
     );
   });
 
-  it("stops lexer scans at an unterminated extglob newline", () => {
-    expect(findExtglobClose("@(foo\nbar)", 1, true)).toBe(-1);
+  it("finds balanced extglobs across newlines", () => {
+    const value = "@(foo\nbar)";
+
+    expect(findExtglobClose(value, 1, true)).toBe(value.length - 1);
   });
 
   it("bounds nested command substitution scans", () => {
-    const value = `@(${"$(".repeat(201)}x${")".repeat(201)})`;
+    let nested = "x";
+    for (let index = 0; index < 1_001; index++) {
+      nested = `\${x-$(${nested})}`;
+    }
+    const value = `@(${nested}|bar)`;
 
     expect(findExtglobClose(value, 1, false)).toBe(-1);
   });

@@ -157,7 +157,10 @@ export class Parser {
 
       this._input = input;
       this.processLineState = undefined;
-      const lexer = new Lexer(input, options);
+      const lexer = new Lexer(input, {
+        ...options,
+        extglobScanBudget: this.parseBudget,
+      });
       this.tokens = lexer.tokenize();
 
       // Check token count limit
