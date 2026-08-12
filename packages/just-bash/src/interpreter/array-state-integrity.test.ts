@@ -216,6 +216,59 @@ describe("structured array state integrity", () => {
     });
   });
 
+  it("does not re-evaluate mixed operations in prefixed expansions", async () => {
+    const result = await new Bash().exec(`
+      values=(zero value)
+      i=0
+      set -- prefix\${values[i += 1]:-"a"b}
+      printf 'read=<%s>|i=%s\n' "$1" "$i"
+      values=(zero)
+      declare -n element='values[i += 1]'
+      i=0
+      set -- prefix\${element:="a"b}
+      printf 'assign=<%s>|i=%s|two=%s\n' "$1" "$i" "\${values[2]-unset}"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "read=<prefixvalue>|i=1\nassign=<prefixab>|i=2|two=ab\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("does not add an empty field after a quoted mixed prefix", async () => {
+    const result = await new Bash().exec(`
+      IFS=_
+      prefix=q
+      suffix=_a
+      unset value
+      set -- \${value:-"$prefix"$suffix}
+      printf 'count=%s|<%s>|<%s>\n' "$#" "$1" "$2"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "count=2|<q>|<a>\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("flushes trailing mixed boundaries before another expansion", async () => {
+    const result = await new Bash().exec(`
+      x='b '
+      suffix=c
+      unset value
+      set -- prefix=\${value:-$x""}$suffix
+      printf '<%s>|<%s>\n' "$1" "$2"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "<prefix=b>|<c>\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
   it("preserves associative nameref subscripts", async () => {
     const result = await new Bash().exec(`
       declare -A values=([key]=value)
