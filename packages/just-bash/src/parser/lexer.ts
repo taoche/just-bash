@@ -2335,8 +2335,8 @@ export class Lexer {
   private scanExtglobPattern(
     startPos: number,
   ): { content: string; end: number } | null {
-    const close = findExtglobClose(this.input, startPos);
-    if (close === -1 || this.input.slice(startPos, close).includes("\n")) {
+    const close = findExtglobClose(this.input, startPos, true);
+    if (close === -1) {
       return null;
     }
     return {

@@ -20,6 +20,7 @@ import type {
   UntilNode,
   WhileNode,
 } from "../ast/types.js";
+import { getCurrentExtglob } from "../ast/types.js";
 import { utf8ByteLength } from "../encoding.js";
 import type { ExecResult } from "../types.js";
 import { evaluateArithmetic } from "./arithmetic.js";
@@ -88,9 +89,7 @@ class CompoundOutput {
   constructor(private readonly ctx: InterpreterContext) {}
 
   append(stdout: string, stderr: string): void {
-    const addedBytes =
-      (this.ctx.executionScope.isCapturingStdout ? 0 : utf8ByteLength(stdout)) +
-      utf8ByteLength(stderr);
+    const addedBytes = utf8ByteLength(stdout) + utf8ByteLength(stderr);
     if (addedBytes > this.ctx.limits.maxOutputSize - this.totalBytes) {
       throwExecutionLimit(
         `total output size exceeded (>${this.ctx.limits.maxOutputSize} bytes), increase executionLimits.maxOutputSize`,
@@ -109,13 +108,7 @@ class CompoundOutput {
     this.append(stdout, stderr);
   }
 
-  appendExpansionStderr(stderr: string, alreadyAccountedBytes: number): void {
-    this.ctx.executionScope.appendOutput(
-      "stderr",
-      stderr,
-      "control-flow",
-      alreadyAccountedBytes,
-    );
+  appendExpansionStderr(stderr: string): void {
     this.append("", stderr);
   }
 
@@ -143,9 +136,7 @@ class CompoundOutput {
       stderr,
       exitCode,
       internalOutputAccounting: {
-        stdout: this.ctx.executionScope.isCapturingStdout
-          ? 0
-          : utf8ByteLength(stdout),
+        stdout: utf8ByteLength(stdout),
         stderr: utf8ByteLength(stderr),
       },
     };
@@ -255,15 +246,8 @@ async function executeForBody(
       if (e instanceof GlobError) {
         // failglob: return error with exit code 1
         const stderr = (ctx.state.expansionStderr || "") + e.stderr;
-        const accountedStderr = ctx.state.expansionStderrAccountedBytes ?? 0;
         ctx.state.expansionStderr = "";
-        ctx.state.expansionStderrAccountedBytes = undefined;
-        return {
-          stdout: "",
-          stderr,
-          exitCode: 1,
-          internalOutputAccounting: { stdout: 0, stderr: accountedStderr },
-        };
+        return { stdout: "", stderr, exitCode: 1 };
       }
       throw e;
     }
@@ -622,12 +606,8 @@ async function executeCaseBody(
 
   const value = await expandWord(ctx, node.word);
   if (ctx.state.expansionStderr) {
-    output.appendExpansionStderr(
-      ctx.state.expansionStderr,
-      ctx.state.expansionStderrAccountedBytes ?? 0,
-    );
+    output.appendExpansionStderr(ctx.state.expansionStderr);
     ctx.state.expansionStderr = "";
-    ctx.state.expansionStderrAccountedBytes = undefined;
   }
 
   // fallThrough tracks whether we should execute the next case body unconditionally
@@ -642,18 +622,14 @@ async function executeCaseBody(
       // Normal pattern matching
       for (const pattern of item.patterns) {
         const hasStructuredExtglob = pattern.parts.some(
-          (part) => part.type === "Glob" && part.extglob,
+          (part) => part.type === "Glob" && getCurrentExtglob(part),
         );
         let patternStr = hasStructuredExtglob
           ? await expandWordForPattern(ctx, pattern)
           : await expandWord(ctx, pattern);
         if (ctx.state.expansionStderr) {
-          output.appendExpansionStderr(
-            ctx.state.expansionStderr,
-            ctx.state.expansionStderrAccountedBytes ?? 0,
-          );
+          output.appendExpansionStderr(ctx.state.expansionStderr);
           ctx.state.expansionStderr = "";
-          ctx.state.expansionStderrAccountedBytes = undefined;
         }
         // If the pattern is fully quoted, escape glob characters for literal matching
         if (isWordFullyQuoted(pattern)) {

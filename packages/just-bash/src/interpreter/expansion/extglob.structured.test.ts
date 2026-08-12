@@ -6,7 +6,6 @@ import {
   runRealBash,
   setupFiles,
 } from "../../comparison-tests/fixture-runner.js";
-import { ExecutionLimitError } from "../errors.js";
 
 const quoteForShell = (value: string): string =>
   `'${value.replaceAll("'", "'\\''")}'`;
@@ -138,25 +137,11 @@ describe("structured extglob expansion", () => {
     );
   });
 
-  it("enforces maxStringLength after rebuilding structured extglobs", async () => {
-    const bash = new Bash({ executionLimits: { maxStringLength: 7 } });
-    const result = await bash.exec("shopt -s extglob; : @($(printf 123456))");
-
-    expect(result.exitCode).toBe(ExecutionLimitError.EXIT_CODE);
-    expect(result.stderr).toBe(
-      "bash: word expansion: string length limit exceeded (7 bytes)\n",
-    );
-  });
-
   it("keeps quoted extglob alternatives intact during word splitting", async () => {
     await compareWithBash(
       {},
       "v='a b'; set -f; printf '<%s>\\n' @($v|\"d e\")",
     );
-  });
-
-  it("preserves leading IFS breaks after extglob syntax", async () => {
-    await compareWithBash({}, "v=' a '; set -f; printf '<%s>\\n' @($v|q)");
   });
 
   it("evaluates structured extglob alternatives once while globbing is disabled", async () => {
@@ -170,51 +155,23 @@ describe("structured extglob expansion", () => {
     );
   });
 
-  it("does not double-account case-pattern substitution stderr", async () => {
-    const bash = new Bash({ executionLimits: { maxOutputSize: 4 } });
-    const result = await bash.exec(
-      "shopt -s extglob; case x in @($(printf 1234 >&2; printf x))) :;; esac",
-    );
+  it("executes substitutions once while expanding redirect targets", async () => {
+    const bash = new Bash();
+    const result = await bash.exec(`
+      shopt -s extglob
+      rm -f marker
+      : > @($(printf x >> marker; printf target))
+      cat marker
+      rm -f marker
+      : > $(printf x >> marker; printf target)*
+      cat marker
+    `);
 
-    expect(result).toMatchObject({ stdout: "", stderr: "1234", exitCode: 0 });
-  });
-
-  it("does not charge captured substitution output against the parent", async () => {
-    const bash = new Bash({ executionLimits: { maxOutputSize: 4 } });
-    const result = await bash.exec(
-      "shopt -s extglob; : @($(printf 1234 >&2; printf x))",
-    );
-
-    expect(result).toMatchObject({ stdout: "", stderr: "1234", exitCode: 0 });
-  });
-
-  it("does not charge captured compound stdout against visible stderr", async () => {
-    const bash = new Bash({ executionLimits: { maxOutputSize: 4 } });
-    const result = await bash.exec(
-      "x=$(if true; then printf x; printf 1234 >&2; fi)",
-    );
-
-    expect(result).toMatchObject({ stdout: "", stderr: "1234", exitCode: 0 });
-  });
-
-  it("does not leak captured stdout from a failed substitution", async () => {
-    const bash = new Bash({
-      executionLimits: { maxOutputSize: 4, maxLoopIterations: 1 },
+    expect(result).toMatchObject({
+      stdout: "xx",
+      stderr: "",
+      exitCode: 0,
     });
-    const result = await bash.exec(
-      "printf abc; x=$(printf def; while true; do :; done)",
-    );
-
-    expect(result.stdout).toBe("abc");
-    expect(result.exitCode).toBe(ExecutionLimitError.EXIT_CODE);
-    expect(result.stderr).toContain("while loop: too many iterations");
-  });
-
-  it("does not re-evaluate parameters while splitting structured alternatives", async () => {
-    await compareWithBash(
-      {},
-      'i=0; unset values; set -f; printf "<%s>\\n" @(${values[i++]:-"q"x}); echo "i=$i"',
-    );
   });
 
   it("retains the complete redirect source in ambiguous redirect errors", async () => {

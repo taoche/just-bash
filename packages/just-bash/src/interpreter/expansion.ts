@@ -16,6 +16,7 @@ import type {
   WordNode,
   WordPart,
 } from "../ast/types.js";
+import { getCurrentExtglob } from "../ast/types.js";
 import { parseArithmeticExpression } from "../parser/arithmetic-parser.js";
 import { Parser } from "../parser/parser.js";
 import { GlobExpander } from "../shell/glob.js";
@@ -56,6 +57,7 @@ import {
   escapeGlobChars,
   escapeRegexChars,
   hasGlobPattern,
+  unescapeGlobPattern,
 } from "./expansion/glob-escape.js";
 import {
   computeIsEmpty,
@@ -221,8 +223,13 @@ export async function expandWordForRegex(
       // and then '^a$' is escaped to '\^a\$' which matches the literal string
       const expanded = await expandPart(ctx, part);
       parts.push(escapeRegexChars(expanded));
-    } else if (part.type === "Glob" && part.extglob) {
-      parts.push(await expandStructuredExtglobForGlobbing(ctx, part.extglob));
+    } else if (part.type === "Glob") {
+      const extglob = getCurrentExtglob(part);
+      parts.push(
+        extglob
+          ? await expandStructuredExtglobForGlobbing(ctx, extglob)
+          : await expandPart(ctx, part),
+      );
     } else {
       // Other parts: expand normally
       parts.push(await expandPart(ctx, part));
@@ -258,8 +265,13 @@ export async function expandWordForPattern(
       // Double-quoted: expand contents and escape for literal matching
       const expanded = await expandWordPartsAsync(ctx, part.parts);
       parts.push(escapeGlobChars(expanded));
-    } else if (part.type === "Glob" && part.extglob) {
-      parts.push(await expandStructuredExtglobForGlobbing(ctx, part.extglob));
+    } else if (part.type === "Glob") {
+      const extglob = getCurrentExtglob(part);
+      parts.push(
+        extglob
+          ? await expandStructuredExtglobForGlobbing(ctx, extglob)
+          : await expandPart(ctx, part),
+      );
     } else {
       // Other parts: expand normally
       parts.push(await expandPart(ctx, part));
@@ -296,8 +308,9 @@ async function expandWordForGlobbing(
       const expanded = await expandWordPartsAsync(ctx, part.parts);
       parts.push(escapeGlobChars(expanded));
     } else if (part.type === "Glob") {
-      if (part.extglob) {
-        parts.push(await expandStructuredExtglobForGlobbing(ctx, part.extglob));
+      const extglob = getCurrentExtglob(part);
+      if (extglob) {
+        parts.push(await expandStructuredExtglobForGlobbing(ctx, extglob));
       } else if (patternHasCommandSubstitution(part.pattern)) {
         // Use async version for command substitutions
         parts.push(await expandVariablesInPatternAsync(ctx, part.pattern));
@@ -335,14 +348,15 @@ async function expandWordWithStructuredExtglobs(
 ): Promise<string> {
   const parts: string[] = [];
   for (const part of word.parts) {
-    if (part.type === "Glob" && part.extglob) {
+    const extglob = part.type === "Glob" ? getCurrentExtglob(part) : undefined;
+    if (extglob) {
       const alternatives: string[] = [];
-      for (const alternative of part.extglob.alternatives) {
+      for (const alternative of extglob.alternatives) {
         alternatives.push(
           await expandWordWithStructuredExtglobs(ctx, alternative),
         );
       }
-      parts.push(`${part.extglob.operator}(${alternatives.join("|")})`);
+      parts.push(`${extglob.operator}(${alternatives.join("|")})`);
     } else {
       parts.push(await expandPart(ctx, part));
     }
@@ -350,6 +364,80 @@ async function expandWordWithStructuredExtglobs(
   const result = parts.join("");
   checkStringLength(result, ctx.limits.maxStringLength, "word expansion");
   return result;
+}
+
+type RedirectWordExpansion = {
+  value: string;
+  globPattern: string;
+};
+
+async function expandStructuredExtglobForRedirect(
+  ctx: InterpreterContext,
+  extglob: NonNullable<GlobPart["extglob"]>,
+): Promise<RedirectWordExpansion> {
+  const alternatives: RedirectWordExpansion[] = [];
+  for (const alternative of extglob.alternatives) {
+    alternatives.push(await expandWordForRedirect(ctx, alternative));
+  }
+  const value = `${extglob.operator}(${alternatives.map((alternative) => alternative.value).join("|")})`;
+  const globPattern = `${extglob.operator}(${alternatives.map((alternative) => alternative.globPattern).join("|")})`;
+  checkStringLength(value, ctx.limits.maxStringLength, "word expansion");
+  checkStringLength(globPattern, ctx.limits.maxStringLength, "word expansion");
+  return { value, globPattern };
+}
+
+async function expandWordForRedirect(
+  ctx: InterpreterContext,
+  word: WordNode,
+): Promise<RedirectWordExpansion> {
+  const values: string[] = [];
+  const globPatterns: string[] = [];
+
+  for (const part of word.parts) {
+    if (part.type === "SingleQuoted") {
+      values.push(part.value);
+      globPatterns.push(escapeGlobChars(part.value));
+      continue;
+    }
+    if (part.type === "Escaped") {
+      values.push(part.value);
+      globPatterns.push(
+        "*?[]\\()|".includes(part.value) ? `\\${part.value}` : part.value,
+      );
+      continue;
+    }
+    if (part.type === "DoubleQuoted") {
+      const value = await expandWordPartsAsync(ctx, part.parts);
+      values.push(value);
+      globPatterns.push(escapeGlobChars(value));
+      continue;
+    }
+    if (part.type === "Glob") {
+      const extglob = getCurrentExtglob(part);
+      if (extglob) {
+        const expanded = await expandStructuredExtglobForRedirect(ctx, extglob);
+        values.push(expanded.value);
+        globPatterns.push(expanded.globPattern);
+        continue;
+      }
+      const globPattern = patternHasCommandSubstitution(part.pattern)
+        ? await expandVariablesInPatternAsync(ctx, part.pattern)
+        : expandVariablesInPattern(ctx, part.pattern);
+      values.push(unescapeGlobPattern(globPattern));
+      globPatterns.push(globPattern);
+      continue;
+    }
+
+    const value = await expandPart(ctx, part);
+    values.push(value);
+    globPatterns.push(value);
+  }
+
+  const value = values.join("");
+  const globPattern = globPatterns.join("");
+  checkStringLength(value, ctx.limits.maxStringLength, "word expansion");
+  checkStringLength(globPattern, ctx.limits.maxStringLength, "word expansion");
+  return { value, globPattern };
 }
 
 /**
@@ -672,12 +760,7 @@ export async function expandRedirectTarget(
     // (value will be re-expanded below, but since there's only one value it's the same)
   }
 
-  const hasStructuredExtglob = wordParts.some(
-    (part) => part.type === "Glob" && part.extglob,
-  );
-  const value = hasStructuredExtglob
-    ? await expandWordWithStructuredExtglobs(ctx, word)
-    : await expandWordAsync(ctx, word);
+  const { value, globPattern } = await expandWordForRedirect(ctx, word);
 
   // Check for word splitting producing multiple words - this is an ambiguous redirect
   // This only applies when the word has unquoted expansions (not all quoted)
@@ -713,11 +796,6 @@ export async function expandRedirectTarget(
   ) {
     return { target: value };
   }
-
-  // Build glob pattern using expandWordForGlobbing which preserves escaped glob chars
-  // For example: two-\* becomes two-\\* (escaped * is literal, not a glob)
-  // But: two-$star where star='*' becomes two-* (variable expansion is subject to glob)
-  const globPattern = await expandWordForGlobbing(ctx, word);
 
   // Skip if there are no glob patterns in the pattern
   if (!hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
@@ -796,8 +874,11 @@ async function expandPart(
     return expandParameterAsync(ctx, part, inDoubleQuotes);
   }
 
-  if (part.type === "Glob" && part.extglob) {
-    return expandStructuredExtglobForGlobbing(ctx, part.extglob);
+  if (part.type === "Glob") {
+    const extglob = getCurrentExtglob(part);
+    if (extglob) {
+      return expandStructuredExtglobForGlobbing(ctx, extglob);
+    }
   }
 
   // Try simple cases first (Literal, SingleQuoted, Escaped, TildeExpansion, Glob)
@@ -880,10 +961,8 @@ async function expandPart(
       // bash only prints verbose output for the main script
       const savedSuppressVerbose = ctx.state.suppressVerbose;
       ctx.state.suppressVerbose = true;
-      const capturedStdout = ctx.executionScope.captureStdout();
       try {
         const result = await ctx.executeScript(part.body);
-        capturedStdout.release();
         // Restore environment but preserve exit code
         const exitCode = result.exitCode;
         ctx.state.env = savedEnv;
@@ -898,9 +977,6 @@ async function expandPart(
         if (result.stderr) {
           ctx.state.expansionStderr =
             (ctx.state.expansionStderr || "") + result.stderr;
-          ctx.state.expansionStderrAccountedBytes =
-            (ctx.state.expansionStderrAccountedBytes ?? 0) +
-            (result.internalOutputAccounting?.stderr ?? 0);
         }
         ctx.state.bashPid = savedBashPid;
         ctx.substitutionDepth = savedDepth;
@@ -913,7 +989,6 @@ async function expandPart(
         );
         return output;
       } catch (error) {
-        capturedStdout.release();
         // Restore environment on error as well
         ctx.state.env = savedEnv;
         ctx.state.arrays = savedArrays;
@@ -923,8 +998,6 @@ async function expandPart(
         ctx.state.suppressVerbose = savedSuppressVerbose;
         // ExecutionLimitError must always propagate - these are safety limits
         if (error instanceof ExecutionLimitError) {
-          error.stdout = "";
-          error.internalOutputAccounting.stdout = 0;
           throw error;
         }
         if (error instanceof ExitError) {
@@ -935,9 +1008,6 @@ async function expandPart(
           if (error.stderr) {
             ctx.state.expansionStderr =
               (ctx.state.expansionStderr || "") + error.stderr;
-            ctx.state.expansionStderrAccountedBytes =
-              (ctx.state.expansionStderrAccountedBytes ?? 0) +
-              error.internalOutputAccounting.stderr;
           }
           const exitOutput = error.stdout.replace(/\n+$/, "");
           // Check string length limit for command substitution output
@@ -1090,15 +1160,7 @@ async function expandParameterAsync(
     return value;
   }
 
-  const needsUnsetCheck =
-    operation.type === "Transform" ||
-    operation.type === "Indirection" ||
-    ((operation.type === "DefaultValue" ||
-      operation.type === "AssignDefault" ||
-      operation.type === "ErrorIfUnset" ||
-      operation.type === "UseAlternative") &&
-      !operation.checkEmpty);
-  const isUnset = needsUnsetCheck && !(await isVariableSet(ctx, parameter));
+  const isUnset = !(await isVariableSet(ctx, parameter));
   // Compute isEmpty and effectiveValue using extracted helper
   const { isEmpty, effectiveValue } = computeIsEmpty(
     ctx,

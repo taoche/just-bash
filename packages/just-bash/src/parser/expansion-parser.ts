@@ -1034,6 +1034,7 @@ export function parseWordParts(
       // Find the matching closing paren
       const closeIdx = findExtglobClose(value, i + 1);
       if (closeIdx !== -1) {
+        p.chargeExtglobScanWork((closeIdx - i + 1) * 3);
         flushLiteral();
         const pattern = value.slice(i, closeIdx + 1);
         const alternativeStrings = splitExtglobAlternatives(

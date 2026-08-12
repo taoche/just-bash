@@ -162,6 +162,28 @@ describe("Parser Protection", () => {
   });
 
   describe("pathological patterns", () => {
+    it("should handle many unterminated extglob openers", () => {
+      const input = "@(\n".repeat(30_000);
+
+      const start = Date.now();
+      try {
+        parse(input);
+      } catch {
+        // The input is malformed.
+      }
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeLessThan(1000);
+    });
+
+    it("should bound nested extglob scan work", () => {
+      const input = `echo ${"@(".repeat(200)}${"x".repeat(100_000)}${")".repeat(200)}`;
+
+      const start = Date.now();
+      expect(() => parse(input)).toThrow(/extglob scan work/);
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeLessThan(1000);
+    });
+
     it("should handle repeated brace patterns", () => {
       // Brace expansion can cause exponential growth
       const input = "echo {a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}";

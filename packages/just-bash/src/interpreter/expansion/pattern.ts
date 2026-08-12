@@ -1,4 +1,8 @@
-import type { GlobPart, WordPart } from "../../ast/types.js";
+import {
+  type GlobPart,
+  getCurrentExtglob,
+  type WordPart,
+} from "../../ast/types.js";
 import type { InterpreterContext } from "../types.js";
 
 /**
@@ -23,7 +27,7 @@ export async function expandGlobPart(
   part: GlobPart,
   expandPart: (ctx: InterpreterContext, part: WordPart) => Promise<string>,
 ): Promise<string> {
-  return part.extglob ? expandPart(ctx, part) : part.pattern;
+  return getCurrentExtglob(part) ? expandPart(ctx, part) : part.pattern;
 }
 
 /**

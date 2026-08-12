@@ -790,7 +790,13 @@ export interface ExtglobMetadata {
   operator: ExtglobOperator;
   alternatives: WordNode[];
   /** Original raw pattern, used to detect a direct update to Glob.pattern. */
-  sourcePattern: string;
+  readonly sourcePattern: string;
+}
+
+export function getCurrentExtglob(part: GlobPart): ExtglobMetadata | undefined {
+  return part.extglob?.sourcePattern === part.pattern
+    ? part.extglob
+    : undefined;
 }
 
 // =============================================================================

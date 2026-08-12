@@ -141,7 +141,6 @@ export function beginIsolatedShellState(state: InterpreterState): () => void {
     bashPid: state.bashPid,
     expansionExitCode: state.expansionExitCode,
     expansionStderr: state.expansionStderr,
-    expansionStderrAccountedBytes: state.expansionStderrAccountedBytes,
   };
 
   state.env = new Map(state.env);

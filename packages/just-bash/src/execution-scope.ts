@@ -51,7 +51,6 @@ export class ExecutionScope {
   private liveBytes = 0;
   private inputBytes = 0;
   private outputBytes = 0;
-  private capturedStdoutDepth = 0;
   private readonly countersByKind = new Map<string, number>();
   private readonly bytesByKind = new Map<string, number>();
   private readonly depthByKind = new Map<string, number>();
@@ -68,10 +67,6 @@ export class ExecutionScope {
   /** Snapshot used to prove accounting inherited from a nested execution. */
   get outputBytesUsed(): number {
     return this.outputBytes;
-  }
-
-  get isCapturingStdout(): boolean {
-    return this.capturedStdoutDepth > 0;
   }
 
   constructor(
@@ -251,8 +246,7 @@ export class ExecutionScope {
         ),
       );
     }
-    const capturedStdout = stream === "stdout" && this.capturedStdoutDepth > 0;
-    const unaccounted = capturedStdout ? 0 : bytes - alreadyAccountedBytes;
+    const unaccounted = bytes - alreadyAccountedBytes;
     if (unaccounted > this.limits.maxOutputSize - this.outputBytes) {
       this.fail(
         new ExecutionLimitError(
@@ -262,7 +256,7 @@ export class ExecutionScope {
       );
     }
     this.outputBytes += unaccounted;
-    return capturedStdout ? 0 : bytes;
+    return bytes;
   }
 
   accountResult(
@@ -299,20 +293,6 @@ export class ExecutionScope {
     return {
       ...result,
       internalOutputAccounting: { stdout, stderr },
-    };
-  }
-
-  /** Suppress output-budget accounting for stdout captured by command substitution. */
-  captureStdout(): ResourceLease {
-    this.assertUsable();
-    this.capturedStdoutDepth += 1;
-    let released = false;
-    return {
-      release: () => {
-        if (released) return;
-        released = true;
-        this.capturedStdoutDepth -= 1;
-      },
     };
   }
 

@@ -4,7 +4,11 @@
  * IFS-based word splitting for unquoted expansions.
  */
 
-import type { ParameterExpansionPart, WordPart } from "../../ast/types.js";
+import {
+  getCurrentExtglob,
+  type ParameterExpansionPart,
+  type WordPart,
+} from "../../ast/types.js";
 import { ExecutionLimitError } from "../errors.js";
 import { getVariable, isVariableSet } from "../expansion/variable.js";
 import { splitByIfsForExpansionEx } from "../helpers/ifs.js";
@@ -159,8 +163,9 @@ function isPartSplittable(part: WordPart): boolean {
   // Glob parts are splittable only if they contain variable references
   // e.g., +($ABC) where ABC contains IFS characters should be split
   if (part.type === "Glob") {
-    if (part.extglob) {
-      return part.extglob.alternatives.some((alternative) =>
+    const extglob = getCurrentExtglob(part);
+    if (extglob) {
+      return extglob.alternatives.some((alternative) =>
         alternative.parts.some(isPartSplittable),
       );
     }
@@ -222,22 +227,23 @@ async function appendSplitSegments(
   let hasSplittablePart = false;
 
   for (const part of parts) {
-    if (part.type === "Glob" && part.extglob) {
+    const extglob = part.type === "Glob" ? getCurrentExtglob(part) : undefined;
+    if (extglob) {
       segments.push({
-        value: `${part.extglob.operator}(`,
+        value: `${extglob.operator}(`,
         isSplittable: false,
         isQuoted: false,
       });
-      for (let index = 0; index < part.extglob.alternatives.length; index++) {
+      for (let index = 0; index < extglob.alternatives.length; index++) {
         const alternativeHasSplittablePart = await appendSplitSegments(
           ctx,
-          part.extglob.alternatives[index].parts,
+          extglob.alternatives[index].parts,
           expandPartFn,
           segments,
           true,
         );
         hasSplittablePart ||= alternativeHasSplittablePart;
-        if (index < part.extglob.alternatives.length - 1) {
+        if (index < extglob.alternatives.length - 1) {
           segments.push({ value: "|", isSplittable: false, isQuoted: false });
         }
       }
@@ -344,7 +350,9 @@ export async function smartWordSplit(
     segments,
   );
 
-  if (wordParts.some((part) => part.type === "Glob" && part.extglob)) {
+  if (
+    wordParts.some((part) => part.type === "Glob" && getCurrentExtglob(part))
+  ) {
     let length = 0;
     for (const segment of segments) {
       if (segment.value.length > ctx.limits.maxStringLength - length) {
@@ -471,12 +479,6 @@ export async function smartWordSplit(
         ifsChars,
         ctx.limits.maxArrayElements,
       );
-
-      if (hadLeadingDelimiter && currentWord !== "") {
-        pushSplitWord(ctx, words, currentWord);
-        currentWord = "";
-        hasProducedWord = true;
-      }
 
       // If the previous segment was a quoted empty and this splittable segment
       // has leading IFS delimiter, the quoted empty should anchor an empty word

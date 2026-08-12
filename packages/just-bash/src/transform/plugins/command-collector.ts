@@ -6,6 +6,7 @@ import type {
   WordNode,
   WordPart,
 } from "../../ast/types.js";
+import { getCurrentExtglob } from "../../ast/types.js";
 import type {
   TransformContext,
   TransformPlugin,
@@ -128,8 +129,10 @@ export class CommandCollectorPlugin
           this.walkWordParts(part.parts, commands);
           break;
         case "Glob":
-          if (part.extglob) {
-            for (const alternative of part.extglob.alternatives) {
+          {
+            const extglob = getCurrentExtglob(part);
+            if (!extglob) break;
+            for (const alternative of extglob.alternatives) {
               this.walkWordParts(alternative.parts, commands);
             }
           }

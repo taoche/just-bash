@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GlobPart } from "../ast/types.js";
 import { serialize } from "../transform/serialize.js";
+import { findExtglobClose } from "./extglob.js";
 import { parse } from "./parser.js";
 import { MAX_TOKENS, ParseException } from "./types.js";
 
@@ -123,5 +124,9 @@ describe("structured extglobs", () => {
     expect(() => parse(`echo @(${"|".repeat(MAX_TOKENS)})`)).toThrow(
       ParseException,
     );
+  });
+
+  it("stops lexer scans at an unterminated extglob newline", () => {
+    expect(findExtglobClose("@(foo\nbar)", 1, true)).toBe(-1);
   });
 });

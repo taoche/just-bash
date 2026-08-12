@@ -4,7 +4,11 @@
  * Functions for analyzing word parts to determine what types of expansions are present.
  */
 
-import type { ParameterExpansionPart, WordPart } from "../../ast/types.js";
+import {
+  getCurrentExtglob,
+  type ParameterExpansionPart,
+  type WordPart,
+} from "../../ast/types.js";
 
 /**
  * Check if a glob pattern string contains variable references ($var or ${var})
@@ -187,8 +191,9 @@ export function analyzeWordParts(parts: WordPart[]): WordPartsAnalysis {
       }
     }
     if (part.type === "Glob") {
-      if (part.extglob) {
-        for (const alternative of part.extglob.alternatives) {
+      const extglob = getCurrentExtglob(part);
+      if (extglob) {
+        for (const alternative of extglob.alternatives) {
           const analysis = analyzeWordParts(alternative.parts);
           hasQuoted ||= analysis.hasQuoted;
           hasCommandSub ||= analysis.hasCommandSub;

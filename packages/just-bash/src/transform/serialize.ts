@@ -28,6 +28,7 @@ import type {
   WordNode,
   WordPart,
 } from "../ast/types.js";
+import { getCurrentExtglob } from "../ast/types.js";
 
 export function serialize(node: ScriptNode): string {
   return serializeScript(node);
@@ -186,18 +187,17 @@ function serializeWordPart(part: WordPart, inDoubleQuotes: boolean): string {
       return serializeBraceExpansion(part);
     case "TildeExpansion":
       return part.user !== null ? `~${part.user}` : "~";
-    case "Glob":
-      if (part.extglob) {
-        if (part.pattern !== part.extglob.sourcePattern) {
-          return part.pattern;
-        }
-        const pattern = `${part.extglob.operator}(${part.extglob.alternatives.map(serializeWord).join("|")})`;
-        const rawPattern = `${part.extglob.operator}(${part.extglob.alternatives.map(serializeExtglobWordWithRawBraces).join("|")})`;
-        return rawPattern === part.extglob.sourcePattern
-          ? part.extglob.sourcePattern
-          : pattern;
+    case "Glob": {
+      const extglob = getCurrentExtglob(part);
+      if (!extglob) {
+        return part.pattern;
       }
-      return part.pattern;
+      const pattern = `${extglob.operator}(${extglob.alternatives.map(serializeWord).join("|")})`;
+      const rawPattern = `${extglob.operator}(${extglob.alternatives.map(serializeExtglobWordWithRawBraces).join("|")})`;
+      return rawPattern === extglob.sourcePattern
+        ? extglob.sourcePattern
+        : pattern;
+    }
     default: {
       const _exhaustive: never = part;
       throw new Error(

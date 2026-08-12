@@ -617,14 +617,8 @@ export class Interpreter {
       if (error instanceof GlobError) {
         // GlobError from failglob should return exit code 1 with error message
         const stderr = (this.ctx.state.expansionStderr || "") + error.stderr;
-        const accountedStderr =
-          this.ctx.state.expansionStderrAccountedBytes ?? 0;
         this.ctx.state.expansionStderr = "";
-        this.ctx.state.expansionStderrAccountedBytes = undefined;
-        return {
-          ...failure(stderr),
-          internalOutputAccounting: { stdout: 0, stderr: accountedStderr },
-        };
+        return failure(stderr);
       }
       // ArithmeticError in expansion (e.g., echo $((42x))) should terminate the script
       // Let the error propagate - it will be caught by the top-level error handler
@@ -673,7 +667,6 @@ export class Interpreter {
 
     // Clear expansion stderr at the start
     this.ctx.state.expansionStderr = "";
-    this.ctx.state.expansionStderrAccountedBytes = undefined;
 
     // Process all assignments (array, subscript, and scalar)
     const assignmentResult = await processAssignments(this.ctx, node);
@@ -734,13 +727,8 @@ export class Interpreter {
       // Include any stderr from command substitutions (e.g., FOO=$(echo foo 1>&2))
       const stderrOutput =
         (this.ctx.state.expansionStderr || "") + xtraceAssignmentOutput;
-      const accountedStderr = this.ctx.state.expansionStderrAccountedBytes ?? 0;
       this.ctx.state.expansionStderr = "";
-      this.ctx.state.expansionStderrAccountedBytes = undefined;
-      return {
-        ...result("", stderrOutput, this.ctx.state.lastExitCode),
-        internalOutputAccounting: { stdout: 0, stderr: accountedStderr },
-      };
+      return result("", stderrOutput, this.ctx.state.lastExitCode);
     }
 
     // Mark prefix assignment variables as temporarily exported for this command
@@ -1058,20 +1046,11 @@ export class Interpreter {
     // Include any stderr from expansion errors
     if (this.ctx.state.expansionStderr) {
       const expansionStderr = this.ctx.state.expansionStderr;
-      const accountedExpansionStderr =
-        this.ctx.state.expansionStderrAccountedBytes ?? 0;
       cmdResult = {
         ...cmdResult,
         stderr: expansionStderr + cmdResult.stderr,
-        internalOutputAccounting: {
-          stdout: cmdResult.internalOutputAccounting?.stdout ?? 0,
-          stderr:
-            accountedExpansionStderr +
-            (cmdResult.internalOutputAccounting?.stderr ?? 0),
-        },
       };
       this.ctx.state.expansionStderr = "";
-      this.ctx.state.expansionStderrAccountedBytes = undefined;
     }
 
     return cmdResult;
@@ -1191,15 +1170,8 @@ export class Interpreter {
             bodyResult = {
               ...bodyResult,
               stderr: expansionStderr + bodyResult.stderr,
-              internalOutputAccounting: {
-                stdout: bodyResult.internalOutputAccounting?.stdout ?? 0,
-                stderr:
-                  (this.ctx.state.expansionStderrAccountedBytes ?? 0) +
-                  (bodyResult.internalOutputAccounting?.stderr ?? 0),
-              },
             };
             this.ctx.state.expansionStderr = "";
-            this.ctx.state.expansionStderrAccountedBytes = undefined;
           }
           return bodyResult;
         } catch (error) {
@@ -1235,15 +1207,8 @@ export class Interpreter {
             bodyResult = {
               ...bodyResult,
               stderr: expansionStderr + bodyResult.stderr,
-              internalOutputAccounting: {
-                stdout: bodyResult.internalOutputAccounting?.stdout ?? 0,
-                stderr:
-                  (this.ctx.state.expansionStderrAccountedBytes ?? 0) +
-                  (bodyResult.internalOutputAccounting?.stderr ?? 0),
-              },
             };
             this.ctx.state.expansionStderr = "";
-            this.ctx.state.expansionStderrAccountedBytes = undefined;
           }
           return bodyResult;
         } catch (error) {

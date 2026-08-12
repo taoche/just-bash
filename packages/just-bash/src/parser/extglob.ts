@@ -1,7 +1,11 @@
 type Quote = "'" | '"' | "$'";
 
 /** Find the closing parenthesis for an extglob starting at `openIndex`. */
-export function findExtglobClose(value: string, openIndex: number): number {
+export function findExtglobClose(
+  value: string,
+  openIndex: number,
+  stopAtNewline = false,
+): number {
   let depth = 1;
   let quote: Quote | undefined;
 
@@ -31,6 +35,10 @@ export function findExtglobClose(value: string, openIndex: number): number {
     if (character === "\\" && index + 1 < value.length) {
       index += 1;
       continue;
+    }
+
+    if (stopAtNewline && character === "\n") {
+      return -1;
     }
 
     if (character === "`") {
@@ -111,8 +119,9 @@ export function splitExtglobAlternatives(
       }
     }
 
-    if (braceEnds[index] > 0) {
-      index = braceEnds[index] - 1;
+    const braceEnd = braceEnds.get(index);
+    if (braceEnd) {
+      index = braceEnd - 1;
       continue;
     }
 
@@ -131,8 +140,8 @@ export function splitExtglobAlternatives(
   return alternatives;
 }
 
-function findBraceEnds(value: string): Int32Array {
-  const ends = new Int32Array(value.length);
+function findBraceEnds(value: string): Map<number, number> {
+  const ends = new Map<number, number>();
   const braces: Array<{
     start: number;
     forceOpaque: boolean;
@@ -224,7 +233,7 @@ function findBraceEnds(value: string): Int32Array {
         (!closedBrace.hasNestedBrace &&
           isBraceRangeContent(closedBrace.content.join("")));
       if (isExpansion) {
-        ends[closedBrace.start] = index + 1;
+        ends.set(closedBrace.start, index + 1);
         const parent = braces[braces.length - 1];
         if (parent) parent.hasNestedExpansion = true;
       }

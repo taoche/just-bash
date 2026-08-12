@@ -14,6 +14,7 @@ import type {
   WordNode,
   WordPart,
 } from "../../ast/types.js";
+import { getCurrentExtglob } from "../../ast/types.js";
 import { GlobExpander } from "../../shell/glob.js";
 import { GlobError } from "../errors.js";
 import { appendBoundedElements } from "../helpers/bounded-array.js";
@@ -126,7 +127,7 @@ export async function expandWordWithGlobImpl(
   ctx.coverage?.hit("bash:expansion:word_glob");
   const wordParts = word.parts;
   const hasStructuredExtglob = wordParts.some(
-    (part) => part.type === "Glob" && part.extglob,
+    (part) => part.type === "Glob" && getCurrentExtglob(part),
   );
   const {
     hasQuoted,
@@ -917,7 +918,7 @@ async function handleFinalGlobExpansion(
 ): Promise<{ values: string[]; quoted: boolean }> {
   const hasGlobParts = wordParts.some((p) => p.type === "Glob");
   const hasStructuredExtglob = wordParts.some(
-    (part) => part.type === "Glob" && part.extglob,
+    (part) => part.type === "Glob" && getCurrentExtglob(part),
   );
   const structuredGlobPattern =
     hasStructuredExtglob && !ctx.state.options.noglob ? value : null;

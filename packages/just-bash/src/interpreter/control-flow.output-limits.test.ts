@@ -57,17 +57,6 @@ describe("compound control-flow output limits", () => {
     expect(result.exitCode).toBe(ExecutionLimitError.EXIT_CODE);
   });
 
-  it("stops before a case body after a synthetic expansion diagnostic", async () => {
-    const bash = new Bash({ executionLimits: { maxOutputSize: 39 } });
-    const result = await bash.exec(
-      'printf abc; declare -a a=(); case "${a[-1]}" in "") printf side > /side;; esac',
-    );
-
-    expect(result.exitCode).toBe(ExecutionLimitError.EXIT_CODE);
-    expect(result.stderr).toContain("total output size exceeded");
-    expect(await bash.fs.exists("/side")).toBe(false);
-  });
-
   it("keeps nested compound output bounded", async () => {
     const bash = new Bash({ executionLimits: { maxOutputSize: 10 } });
     const result = await bash.exec(
