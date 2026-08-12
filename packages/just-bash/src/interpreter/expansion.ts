@@ -506,6 +506,7 @@ function createWordGlobDeps(): WordGlobExpansionDeps {
     expandWordPartsAsync,
     expandPart,
     expandParameterAsync,
+    prepareMixedParameter,
     hasBraceExpansion,
     evaluateArithmetic,
     buildIfsCharClassPattern,
@@ -995,6 +996,61 @@ async function resolveIndexedParameter(
     return { parameter: target, invalidSubscript: true };
   }
   return { parameter: `${arrayName}[${index}]`, invalidSubscript: false };
+}
+
+async function prepareMixedParameter(
+  ctx: InterpreterContext,
+  part: ParameterExpansionPart,
+): Promise<{ value: string; selectedWordParts?: WordPart[] } | null> {
+  const operation = part.operation;
+  if (
+    !operation ||
+    (operation.type !== "DefaultValue" &&
+      operation.type !== "UseAlternative") ||
+    !operation.word ||
+    operation.word.parts.length <= 1 ||
+    part.parameter.includes("$")
+  ) {
+    return null;
+  }
+
+  const hasQuotedParts = operation.word.parts.some(
+    (part) => part.type === "DoubleQuoted" || part.type === "SingleQuoted",
+  );
+  const hasUnquotedParts = operation.word.parts.some(
+    (part) =>
+      part.type === "Literal" ||
+      part.type === "ParameterExpansion" ||
+      part.type === "CommandSubstitution" ||
+      part.type === "ArithmeticExpansion",
+  );
+  if (!hasQuotedParts || !hasUnquotedParts) {
+    return null;
+  }
+
+  const resolvedParameter = await resolveIndexedParameter(ctx, part.parameter);
+  const value = resolvedParameter.invalidSubscript
+    ? ""
+    : await getVariable(ctx, resolvedParameter.parameter, false);
+  const { isEmpty, effectiveValue } = computeIsEmpty(
+    ctx,
+    resolvedParameter.parameter,
+    value,
+    false,
+  );
+  const isUnset =
+    resolvedParameter.invalidSubscript ||
+    (!operation.checkEmpty &&
+      !(await isVariableSet(ctx, resolvedParameter.parameter)));
+  const useOperationWord =
+    operation.type === "UseAlternative"
+      ? !isUnset && !(operation.checkEmpty && isEmpty)
+      : isUnset || (operation.checkEmpty && isEmpty);
+
+  return {
+    value: effectiveValue,
+    selectedWordParts: useOperationWord ? operation.word.parts : undefined,
+  };
 }
 
 // Async version of expandParameter for parameter expansions that contain command substitution

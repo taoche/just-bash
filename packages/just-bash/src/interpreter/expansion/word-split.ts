@@ -6,7 +6,6 @@
 
 import type { ParameterExpansionPart, WordPart } from "../../ast/types.js";
 import { ExecutionLimitError } from "../errors.js";
-import { getVariable, isVariableSet } from "../expansion/variable.js";
 import { splitByIfsForExpansionEx } from "../helpers/ifs.js";
 import type { InterpreterContext } from "../types.js";
 import {
@@ -36,51 +35,20 @@ export type ExpandPartFn = (
   part: WordPart,
 ) => Promise<string>;
 
+export type PreparedMixedParameter = {
+  value: string;
+  selectedWordParts?: WordPart[];
+};
+
+export type PrepareMixedParameterFn = (
+  ctx: InterpreterContext,
+  part: ParameterExpansionPart,
+) => Promise<PreparedMixedParameter | null>;
+
 /**
  * Check if a ParameterExpansion with a default/alternative value should use that value.
  * Returns the operation word parts if the value should be used, null otherwise.
  */
-async function shouldUseOperationWord(
-  ctx: InterpreterContext,
-  part: ParameterExpansionPart,
-): Promise<WordPart[] | null> {
-  const op = part.operation;
-  if (!op) return null;
-
-  // Only handle DefaultValue, AssignDefault, and UseAlternative
-  if (
-    op.type !== "DefaultValue" &&
-    op.type !== "AssignDefault" &&
-    op.type !== "UseAlternative"
-  ) {
-    return null;
-  }
-
-  const word = (op as { word?: { parts: WordPart[] } }).word;
-  if (!word || word.parts.length === 0) return null;
-
-  // Check if the variable is set/empty
-  // Pass checkNounset=false because we're inside a default/alternative value context
-  // where unset variables are allowed
-  const isSet = await isVariableSet(ctx, part.parameter);
-  const value = await getVariable(ctx, part.parameter, false);
-  const isEmpty = value === "";
-  const checkEmpty = (op as { checkEmpty?: boolean }).checkEmpty ?? false;
-
-  let shouldUse: boolean;
-  if (op.type === "UseAlternative") {
-    // ${var+word} - use word if var IS set (and non-empty if :+)
-    shouldUse = isSet && !(checkEmpty && isEmpty);
-  } else {
-    // ${var-word} / ${var=word} - use word if var is NOT set (or empty if :-)
-    shouldUse = !isSet || (checkEmpty && isEmpty);
-  }
-
-  if (!shouldUse) return null;
-
-  return word.parts;
-}
-
 function getOperationWordParts(
   part: ParameterExpansionPart,
 ): WordPart[] | null {
@@ -128,6 +96,7 @@ function isSimpleQuotedLiteral(part: WordPart): boolean {
 async function hasMixedQuotedDefaultValue(
   ctx: InterpreterContext,
   part: WordPart,
+  prepareMixedParameter: PrepareMixedParameterFn,
 ): Promise<WordPart[] | null> {
   if (part.type !== "ParameterExpansion") return null;
 
@@ -145,8 +114,7 @@ async function hasMixedQuotedDefaultValue(
   );
   if (!hasSimpleQuotedParts || !hasUnquotedParts) return null;
 
-  const opWordParts = await shouldUseOperationWord(ctx, part);
-  return opWordParts;
+  return (await prepareMixedParameter(ctx, part))?.selectedWordParts ?? null;
 }
 
 /**
@@ -232,8 +200,22 @@ export async function smartWordSplit(
   ifsChars: string,
   _ifsPattern: string,
   expandPartFn: ExpandPartFn,
+  prepareMixedParameter: PrepareMixedParameterFn,
 ): Promise<string[]> {
   ctx.coverage?.hit("bash:expansion:word_split");
+  const preparedMixedParameters = new Map<
+    ParameterExpansionPart,
+    Promise<PreparedMixedParameter | null>
+  >();
+  const prepare: PrepareMixedParameterFn = (_ctx, part) => {
+    let prepared = preparedMixedParameters.get(part);
+    if (!prepared) {
+      prepared = prepareMixedParameter(ctx, part);
+      preparedMixedParameters.set(part, prepared);
+    }
+    return prepared;
+  };
+
   // Check for special case: ParameterExpansion with a default value that should be used
   // In this case, we need to recursively word-split the default value's parts
   // to preserve quote boundaries within the default value.
@@ -253,9 +235,8 @@ export async function smartWordSplit(
           item.type === "CommandSubstitution" ||
           item.type === "ArithmeticExpansion",
       );
-    const opWordParts = hasMixedParts
-      ? await shouldUseOperationWord(ctx, paramPart)
-      : null;
+    const prepared = hasMixedParts ? await prepare(ctx, paramPart) : null;
+    const opWordParts = prepared?.selectedWordParts;
     if (opWordParts && opWordParts.length > 0) {
       // Recursively word-split the default value's parts. Literal parts from
       // the default value are splittable because they are unquoted here.
@@ -287,9 +268,13 @@ export async function smartWordSplit(
       part.type === "DoubleQuoted" || part.type === "SingleQuoted";
     // Check if this part has a mixed quoted/unquoted default value
     const mixedDefaultParts = splittable
-      ? await hasMixedQuotedDefaultValue(ctx, part)
+      ? await hasMixedQuotedDefaultValue(ctx, part, prepare)
       : null;
-    const expanded = await expandPartFn(ctx, part);
+    const prepared =
+      part.type === "ParameterExpansion" && mixedDefaultParts === null
+        ? await prepare(ctx, part)
+        : null;
+    const expanded = prepared ? prepared.value : await expandPartFn(ctx, part);
     segments.push({
       value: expanded,
       isSplittable: splittable,

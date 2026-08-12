@@ -95,6 +95,28 @@ describe("structured array state integrity", () => {
     });
   });
 
+  it("evaluates mixed default words from one prepared indexed target", async () => {
+    const result = await new Bash().exec(`
+      values=(zero value)
+      i=0
+      set -- \${values[i += 1]:-"a"b}
+      printf 'value=%s|i=%s\n' "$1" "$i"
+      unset values
+      i=0
+      set -- \${values[i += 1]:-"a"b}
+      printf 'fallback=%s|i=%s\n' "$1" "$i"
+      i=0
+      set -- \${values[i -= 1]:-"a"b}
+      printf 'invalid=%s|i=%s\n' "$1" "$i"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "value=value|i=1\nfallback=ab|i=1\ninvalid=ab|i=-1\n",
+      stderr: "bash: line 13: values: bad array subscript\n",
+      exitCode: 0,
+    });
+  });
+
   it("preserves associative nameref subscripts", async () => {
     const result = await new Bash().exec(`
       declare -A values=([key]=value)
