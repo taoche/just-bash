@@ -205,7 +205,9 @@ export async function smartWordSplit(
     const expanded =
       prepared?.type === "value"
         ? prepared.value
-        : await expandPartFn(ctx, part);
+        : prepared?.type === "operationWord"
+          ? ""
+          : await expandPartFn(ctx, part);
     segments.push({
       value: expanded,
       isSplittable: splittable,
