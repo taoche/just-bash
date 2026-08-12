@@ -68,6 +68,7 @@ import {
   handleUnquotedVarNamePrefix,
 } from "./unquoted-expansion.js";
 import { getArrayElements } from "./variable.js";
+import type { SplitWord } from "./word-split.js";
 
 /**
  * Dependencies injected to avoid circular imports
@@ -113,7 +114,7 @@ export interface WordGlobExpansionDeps {
     ifsChars: string,
     ifsPattern: string,
     expandPart: (ctx: InterpreterContext, part: WordPart) => Promise<string>,
-  ) => Promise<string[]>;
+  ) => Promise<SplitWord[]>;
 }
 
 /**
@@ -843,16 +844,21 @@ async function expandMixedWordParts(
  */
 async function applyGlobToValues(
   ctx: InterpreterContext,
-  values: string[],
+  values: Array<string | SplitWord>,
 ): Promise<{ values: string[]; quoted: boolean }> {
-  if (ctx.state.options.noglob) {
-    return { values, quoted: false };
-  }
-
   const expandedValues: string[] = [];
-  for (const v of values) {
-    if (hasGlobPattern(v, ctx.state.shoptOptions.extglob)) {
-      const matches = await expandGlobPattern(ctx, v);
+  for (const entry of values) {
+    const { value, globPattern } =
+      typeof entry === "string" ? { value: entry, globPattern: entry } : entry;
+    if (
+      !ctx.state.options.noglob &&
+      hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)
+    ) {
+      const matches = await expandGlobPattern(ctx, globPattern);
+      if (matches.length === 1 && matches[0] === globPattern) {
+        expandedValues.push(value);
+        continue;
+      }
       appendBoundedElements(
         expandedValues,
         matches,
@@ -860,7 +866,7 @@ async function applyGlobToValues(
         "glob expansion",
       );
     } else {
-      expandedValues.push(v);
+      expandedValues.push(value);
     }
   }
   return { values: expandedValues, quoted: false };

@@ -8,13 +8,18 @@
  * Check if a string contains glob patterns, including extglob when enabled.
  */
 export function hasGlobPattern(value: string, extglob: boolean): boolean {
-  // Standard glob characters
-  if (/[*?[]/.test(value)) {
-    return true;
-  }
-  // Extglob patterns: @(...), *(...), +(...), ?(...), !(...)
-  if (extglob && /[@*+?!]\(/.test(value)) {
-    return true;
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    if (character === "\\") {
+      index += 1;
+      continue;
+    }
+    if (character === "*" || character === "?" || character === "[") {
+      return true;
+    }
+    if (extglob && "@*+?!".includes(character) && value[index + 1] === "(") {
+      return true;
+    }
   }
   return false;
 }
