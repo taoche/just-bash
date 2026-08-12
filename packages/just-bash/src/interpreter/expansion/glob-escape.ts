@@ -8,8 +8,18 @@
  * Check if a string contains glob patterns, including extglob when enabled.
  */
 export function hasGlobPattern(value: string, extglob: boolean): boolean {
-  for (let index = 0; index < value.length; index++) {
-    const character = value[index];
+  if (/[*?[]/.test(value)) {
+    return true;
+  }
+  return extglob && /[@*+?!]\(/.test(value);
+}
+
+export function hasEscapedGlobPattern(
+  pattern: string,
+  extglob: boolean,
+): boolean {
+  for (let index = 0; index < pattern.length; index++) {
+    const character = pattern[index];
     if (character === "\\") {
       index += 1;
       continue;
@@ -17,7 +27,7 @@ export function hasGlobPattern(value: string, extglob: boolean): boolean {
     if (character === "*" || character === "?" || character === "[") {
       return true;
     }
-    if (extglob && "@*+?!".includes(character) && value[index + 1] === "(") {
+    if (extglob && "@*+?!".includes(character) && pattern[index + 1] === "(") {
       return true;
     }
   }

@@ -89,6 +89,13 @@ describe("structured extglob expansion", () => {
     );
   });
 
+  it("expands selected parameter operation words inside alternatives", async () => {
+    await compareWithBash(
+      {},
+      "unset value; set -f; printf '<%s>\\n' @(${value:-a\"b\"c}|z); value=set; printf '<%s>\\n' @(${value:+a\"b\"c}|z)",
+    );
+  });
+
   it("preserves expansion-produced backslashes in redirects", async () => {
     await compareWithBash(
       {},

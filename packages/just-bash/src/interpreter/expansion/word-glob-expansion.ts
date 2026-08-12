@@ -43,7 +43,11 @@ import {
   handleNamerefArrayExpansion,
   handleSimpleArrayExpansion,
 } from "./array-word-expansion.js";
-import { hasGlobPattern, unescapeGlobPattern } from "./glob-escape.js";
+import {
+  hasEscapedGlobPattern,
+  hasGlobPattern,
+  unescapeGlobPattern,
+} from "./glob-escape.js";
 import {
   handleIndirectArrayExpansion,
   handleIndirectInAlternative,
@@ -858,12 +862,15 @@ async function applyGlobToValues(
 ): Promise<{ values: string[]; quoted: boolean }> {
   const expandedValues: string[] = [];
   for (const entry of values) {
-    const { value, globPattern } =
-      typeof entry === "string" ? { value: entry, globPattern: entry } : entry;
-    if (
-      !ctx.state.options.noglob &&
-      hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)
-    ) {
+    const { value, globPattern, shouldGlob } =
+      typeof entry === "string"
+        ? {
+            value: entry,
+            globPattern: entry,
+            shouldGlob: hasGlobPattern(entry, ctx.state.shoptOptions.extglob),
+          }
+        : entry;
+    if (!ctx.state.options.noglob && shouldGlob) {
       const matches = await expandGlobPattern(ctx, globPattern);
       if (matches.length === 1 && matches[0] === globPattern) {
         expandedValues.push(value);
@@ -947,7 +954,7 @@ async function handleFinalGlobExpansion(
     const globPattern =
       structuredGlobPattern ?? (await expandWordForGlobbing(ctx, word));
 
-    if (hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
+    if (hasEscapedGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
       const matches = await expandGlobPattern(ctx, globPattern);
       if (matches.length > 0 && matches[0] !== globPattern) {
         return { values: matches, quoted: false };
@@ -976,7 +983,7 @@ async function handleFinalGlobExpansion(
   ) {
     const globPattern = await expandWordForGlobbing(ctx, word);
 
-    if (hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
+    if (hasEscapedGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
       const matches = await expandGlobPattern(ctx, globPattern);
       if (matches.length > 0 && matches[0] !== globPattern) {
         return { values: matches, quoted: false };

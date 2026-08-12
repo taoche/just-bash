@@ -16,11 +16,16 @@ import {
   globPatternHasVarRef,
   isOperationWordEntirelyQuoted,
 } from "./analysis.js";
-import { escapeGlobChars, unescapeGlobPattern } from "./glob-escape.js";
+import {
+  escapeGlobChars,
+  hasGlobPattern,
+  unescapeGlobPattern,
+} from "./glob-escape.js";
 
 export type SplitWord = {
   value: string;
   globPattern: string;
+  shouldGlob: boolean;
 };
 
 function pushSplitWord(
@@ -28,6 +33,7 @@ function pushSplitWord(
   words: SplitWord[],
   value: string,
   globPattern: string,
+  shouldGlob: boolean,
 ): void {
   if (words.length >= ctx.limits.maxArrayElements) {
     throw new ExecutionLimitError(
@@ -35,7 +41,7 @@ function pushSplitWord(
       "array_elements",
     );
   }
-  words.push({ value, globPattern });
+  words.push({ value, globPattern, shouldGlob });
 }
 
 /**
@@ -134,6 +140,7 @@ function isPartSplittable(part: WordPart): boolean {
 type SplitSegment = {
   value: string;
   globPattern: string;
+  shouldGlob: boolean;
   isSplittable: boolean;
   isQuoted: boolean;
   preparedOperationWord?: Extract<
@@ -157,6 +164,7 @@ async function appendSplitSegments(
       segments.push({
         value: `${extglob.operator}(`,
         globPattern: `${extglob.operator}(`,
+        shouldGlob: true,
         isSplittable: false,
         isQuoted: false,
       });
@@ -173,6 +181,7 @@ async function appendSplitSegments(
           segments.push({
             value: "|",
             globPattern: "|",
+            shouldGlob: true,
             isSplittable: false,
             isQuoted: false,
           });
@@ -181,6 +190,7 @@ async function appendSplitSegments(
       segments.push({
         value: ")",
         globPattern: ")",
+        shouldGlob: true,
         isSplittable: false,
         isQuoted: false,
       });
@@ -199,16 +209,22 @@ async function appendSplitSegments(
         ? prepared.value
         : prepared?.type === "operationWord"
           ? ""
-        : await expandPartFn(ctx, part);
+          : await expandPartFn(ctx, part);
     const globPattern =
       part.type === "DoubleQuoted" || part.type === "SingleQuoted"
         ? escapeGlobChars(expanded)
         : part.type === "Escaped" && "*?[]\\()|".includes(part.value)
           ? `\\${part.value}`
           : expanded;
+    const shouldGlob =
+      part.type !== "DoubleQuoted" &&
+      part.type !== "SingleQuoted" &&
+      part.type !== "Escaped" &&
+      hasGlobPattern(expanded, ctx.state.shoptOptions.extglob);
     segments.push({
       value: part.type === "Glob" ? unescapeGlobPattern(expanded) : expanded,
       globPattern,
+      shouldGlob,
       isSplittable: splittable,
       isQuoted,
       preparedOperationWord:
@@ -321,6 +337,7 @@ export async function smartWordSplit(
       {
         value,
         globPattern: segments.map((segment) => segment.globPattern).join(""),
+        shouldGlob: segments.some((segment) => segment.shouldGlob),
       },
     ];
   }
@@ -344,6 +361,7 @@ export async function smartWordSplit(
   const words: SplitWord[] = [];
   let currentWord = "";
   let currentGlobPattern = "";
+  let currentShouldGlob = false;
   // Track if we've produced any actual words (including empty ones from splits)
   let hasProducedWord = false;
   // Track if the previous splittable segment ended with a trailing IFS delimiter
@@ -364,33 +382,49 @@ export async function smartWordSplit(
         if (segment.isQuoted && segment.value === "") {
           // Quoted empty after trailing IFS delimiter: push current word and an empty word
           if (currentWord !== "") {
-            pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+            pushSplitWord(
+              ctx,
+              words,
+              currentWord,
+              currentGlobPattern,
+              currentShouldGlob,
+            );
           }
           // The quoted empty anchors an empty word
-          pushSplitWord(ctx, words, "", "");
+          pushSplitWord(ctx, words, "", "", false);
           hasProducedWord = true;
           currentWord = "";
           currentGlobPattern = "";
+          currentShouldGlob = false;
           pendingWordBreak = false;
           prevWasQuotedEmpty = true;
         } else if (segment.value !== "") {
           // Non-empty content: push current word (if any) and start new word
           if (currentWord !== "") {
-            pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+            pushSplitWord(
+              ctx,
+              words,
+              currentWord,
+              currentGlobPattern,
+              currentShouldGlob,
+            );
           }
           currentWord = segment.value;
           currentGlobPattern = segment.globPattern;
+          currentShouldGlob = segment.shouldGlob;
           pendingWordBreak = false;
           prevWasQuotedEmpty = false;
         } else {
           // Empty non-quoted segment with pending break: just append (noop)
           currentWord += segment.value;
           currentGlobPattern += segment.globPattern;
+          currentShouldGlob ||= segment.shouldGlob;
           prevWasQuotedEmpty = false;
         }
       } else {
         currentWord += segment.value;
         currentGlobPattern += segment.globPattern;
+        currentShouldGlob ||= segment.shouldGlob;
         prevWasQuotedEmpty = segment.isQuoted && segment.value === "";
       }
     } else if (segment.preparedOperationWord) {
@@ -415,9 +449,16 @@ export async function smartWordSplit(
       const flushedLeadingDelimiter =
         split.hadLeadingDelimiter && currentWord !== "";
       if (flushedLeadingDelimiter) {
-        pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+        pushSplitWord(
+          ctx,
+          words,
+          currentWord,
+          currentGlobPattern,
+          currentShouldGlob,
+        );
         currentWord = "";
         currentGlobPattern = "";
+        currentShouldGlob = false;
         hasProducedWord = true;
       }
       const splitParts =
@@ -430,12 +471,20 @@ export async function smartWordSplit(
       } else if (splitParts.length === 1) {
         currentWord += splitParts[0].value;
         currentGlobPattern += splitParts[0].globPattern;
+        currentShouldGlob ||= splitParts[0].shouldGlob;
         hasProducedWord = true;
       } else {
         // Multiple results: first joins with current, middle are separate, last starts new
         currentWord += splitParts[0].value;
         currentGlobPattern += splitParts[0].globPattern;
-        pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+        currentShouldGlob ||= splitParts[0].shouldGlob;
+        pushSplitWord(
+          ctx,
+          words,
+          currentWord,
+          currentGlobPattern,
+          currentShouldGlob,
+        );
         hasProducedWord = true;
 
         for (let i = 1; i < splitParts.length - 1; i++) {
@@ -444,11 +493,13 @@ export async function smartWordSplit(
             words,
             splitParts[i].value,
             splitParts[i].globPattern,
+            splitParts[i].shouldGlob,
           );
         }
 
         currentWord = splitParts[splitParts.length - 1].value;
         currentGlobPattern = splitParts[splitParts.length - 1].globPattern;
+        currentShouldGlob = splitParts[splitParts.length - 1].shouldGlob;
       }
       pendingWordBreak = split.hadTrailingDelimiter;
       prevWasQuotedEmpty = false;
@@ -466,9 +517,16 @@ export async function smartWordSplit(
 
       const flushedLeadingDelimiter = hadLeadingDelimiter && currentWord !== "";
       if (flushedLeadingDelimiter) {
-        pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+        pushSplitWord(
+          ctx,
+          words,
+          currentWord,
+          currentGlobPattern,
+          currentShouldGlob,
+        );
         currentWord = "";
         currentGlobPattern = "";
+        currentShouldGlob = false;
         hasProducedWord = true;
       }
 
@@ -483,7 +541,7 @@ export async function smartWordSplit(
         !flushedLeadingDelimiter &&
         currentWord === ""
       ) {
-        pushSplitWord(ctx, words, "", "");
+        pushSplitWord(ctx, words, "", "", false);
         hasProducedWord = true;
       }
 
@@ -499,6 +557,7 @@ export async function smartWordSplit(
         // Note: parts[0] might be empty string (e.g., IFS='_' and var='_' produces [""])
         currentWord += splitParts[0];
         currentGlobPattern += splitParts[0];
+        currentShouldGlob ||= segment.shouldGlob;
         hasProducedWord = true;
         // If there was a trailing delimiter, mark pending word break for next segment
         pendingWordBreak = hadTrailingDelimiter;
@@ -509,17 +568,31 @@ export async function smartWordSplit(
         // - Last part starts the new current word
         currentWord += splitParts[0];
         currentGlobPattern += splitParts[0];
-        pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+        currentShouldGlob ||= segment.shouldGlob;
+        pushSplitWord(
+          ctx,
+          words,
+          currentWord,
+          currentGlobPattern,
+          currentShouldGlob,
+        );
         hasProducedWord = true;
 
         // Add middle parts as separate words
         for (let i = 1; i < splitParts.length - 1; i++) {
-          pushSplitWord(ctx, words, splitParts[i], splitParts[i]);
+          pushSplitWord(
+            ctx,
+            words,
+            splitParts[i],
+            splitParts[i],
+            segment.shouldGlob,
+          );
         }
 
         // Last part becomes the new current word
         currentWord = splitParts[splitParts.length - 1];
         currentGlobPattern = splitParts[splitParts.length - 1];
+        currentShouldGlob = segment.shouldGlob;
         // If there was a trailing delimiter, mark pending word break for next segment
         pendingWordBreak = hadTrailingDelimiter;
       }
@@ -533,10 +606,16 @@ export async function smartWordSplit(
   // - we haven't produced any words yet but we've had a split that produced content
   //   (this handles the case of IFS='_' and var='_' -> [""])
   if (currentWord !== "") {
-    pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+    pushSplitWord(
+      ctx,
+      words,
+      currentWord,
+      currentGlobPattern,
+      currentShouldGlob,
+    );
   } else if (words.length === 0 && hasProducedWord) {
     // The only content was from a split that produced [""] (empty string)
-    pushSplitWord(ctx, words, "", "");
+    pushSplitWord(ctx, words, "", "", false);
   }
 
   return words;
@@ -568,7 +647,12 @@ async function smartWordSplitWithUnquotedLiterals(
 }> {
   // Expand all parts and track if they are splittable
   // In this context, Literal parts ARE splittable
-  type Segment = { value: string; globPattern: string; isSplittable: boolean };
+  type Segment = {
+    value: string;
+    globPattern: string;
+    shouldGlob: boolean;
+    isSplittable: boolean;
+  };
   const segments: Segment[] = [];
 
   for (const part of wordParts) {
@@ -586,6 +670,11 @@ async function smartWordSplitWithUnquotedLiterals(
           : part.type === "Escaped" && "*?[]\\()|".includes(part.value)
             ? `\\${part.value}`
             : expanded,
+      shouldGlob:
+        part.type !== "DoubleQuoted" &&
+        part.type !== "SingleQuoted" &&
+        part.type !== "Escaped" &&
+        hasGlobPattern(expanded, ctx.state.shoptOptions.extglob),
       isSplittable: splittable,
     });
   }
@@ -597,6 +686,7 @@ async function smartWordSplitWithUnquotedLiterals(
   const words: SplitWord[] = [];
   let currentWord = "";
   let currentGlobPattern = "";
+  let currentShouldGlob = false;
   let hasProducedWord = false;
   let pendingWordBreak = false;
   let hadLeadingDelimiter = false;
@@ -610,14 +700,22 @@ async function smartWordSplitWithUnquotedLiterals(
       // without creating an empty word in between
       if (pendingWordBreak && segment.value !== "") {
         if (currentWord !== "") {
-          pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+          pushSplitWord(
+            ctx,
+            words,
+            currentWord,
+            currentGlobPattern,
+            currentShouldGlob,
+          );
         }
         currentWord = segment.value;
         currentGlobPattern = segment.globPattern;
+        currentShouldGlob = segment.shouldGlob;
         pendingWordBreak = false;
       } else {
         currentWord += segment.value;
         currentGlobPattern += segment.globPattern;
+        currentShouldGlob ||= segment.shouldGlob;
       }
     } else {
       // Splittable: check if it starts with IFS (causes word break)
@@ -626,9 +724,16 @@ async function smartWordSplitWithUnquotedLiterals(
       // If the segment starts with IFS and we have accumulated content,
       // finish the current word first
       if (startsWithIfsChar && currentWord !== "") {
-        pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+        pushSplitWord(
+          ctx,
+          words,
+          currentWord,
+          currentGlobPattern,
+          currentShouldGlob,
+        );
         currentWord = "";
         currentGlobPattern = "";
+        currentShouldGlob = false;
         hasProducedWord = true;
       }
 
@@ -659,30 +764,45 @@ async function smartWordSplitWithUnquotedLiterals(
       } else if (parts.length === 1) {
         currentWord += parts[0];
         currentGlobPattern += parts[0];
+        currentShouldGlob ||= segment.shouldGlob;
         hasProducedWord = true;
         pendingWordBreak = hadTrailingDelimiter;
       } else {
         // Multiple results from split
         currentWord += parts[0];
         currentGlobPattern += parts[0];
-        pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+        currentShouldGlob ||= segment.shouldGlob;
+        pushSplitWord(
+          ctx,
+          words,
+          currentWord,
+          currentGlobPattern,
+          currentShouldGlob,
+        );
         hasProducedWord = true;
 
         for (let i = 1; i < parts.length - 1; i++) {
-          pushSplitWord(ctx, words, parts[i], parts[i]);
+          pushSplitWord(ctx, words, parts[i], parts[i], segment.shouldGlob);
         }
 
         currentWord = parts[parts.length - 1];
         currentGlobPattern = parts[parts.length - 1];
+        currentShouldGlob = segment.shouldGlob;
         pendingWordBreak = hadTrailingDelimiter;
       }
     }
   }
 
   if (currentWord !== "") {
-    pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+    pushSplitWord(
+      ctx,
+      words,
+      currentWord,
+      currentGlobPattern,
+      currentShouldGlob,
+    );
   } else if (words.length === 0 && hasProducedWord) {
-    pushSplitWord(ctx, words, "", "");
+    pushSplitWord(ctx, words, "", "", false);
   }
 
   return {

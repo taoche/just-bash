@@ -56,7 +56,7 @@ import { getFileReadShorthand } from "./expansion/command-substitution.js";
 import {
   escapeGlobChars,
   escapeRegexChars,
-  hasGlobPattern,
+  hasEscapedGlobPattern,
   unescapeGlobPattern,
 } from "./expansion/glob-escape.js";
 import {
@@ -825,7 +825,7 @@ export async function expandRedirectTarget(
   }
 
   // Skip if there are no glob patterns in the pattern
-  if (!hasGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
+  if (!hasEscapedGlobPattern(globPattern, ctx.state.shoptOptions.extglob)) {
     return { target: value };
   }
 

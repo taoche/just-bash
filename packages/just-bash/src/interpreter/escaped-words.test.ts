@@ -124,4 +124,14 @@ describe("escaped words", () => {
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
   });
+
+  it("globs backslashes produced by parameter expansion", async () => {
+    const result = await new Bash().exec(
+      "touch 'a*b'; value='a\\*b'; printf '<%s>\\n' $value",
+    );
+
+    expect(result.stdout).toBe("<a*b>\n");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
 });
