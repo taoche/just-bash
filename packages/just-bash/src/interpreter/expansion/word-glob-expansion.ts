@@ -67,7 +67,10 @@ import {
   handleUnquotedVarNamePrefix,
 } from "./unquoted-expansion.js";
 import { getArrayElements } from "./variable.js";
-import type { PrepareMixedParameterFn } from "./word-split.js";
+import type {
+  AssignPreparedDefaultFn,
+  PrepareMixedParameterFn,
+} from "./word-split.js";
 
 /**
  * Dependencies injected to avoid circular imports
@@ -97,6 +100,7 @@ export interface WordGlobExpansionDeps {
     inDoubleQuotes?: boolean,
   ) => Promise<string>;
   prepareMixedParameter: PrepareMixedParameterFn;
+  assignPreparedDefault: AssignPreparedDefaultFn;
   hasBraceExpansion: (parts: WordPart[]) => boolean;
   evaluateArithmetic: (
     ctx: InterpreterContext,
@@ -111,6 +115,7 @@ export interface WordGlobExpansionDeps {
     ifsPattern: string,
     expandPart: (ctx: InterpreterContext, part: WordPart) => Promise<string>,
     prepareMixedParameter: PrepareMixedParameterFn,
+    assignPreparedDefault: AssignPreparedDefaultFn,
   ) => Promise<string[]>;
 }
 
@@ -201,6 +206,7 @@ export async function expandWordWithGlobImpl(
       ifsPattern,
       deps.expandPart,
       deps.prepareMixedParameter,
+      deps.assignPreparedDefault,
     );
     return applyGlobToValues(ctx, splitResult);
   }

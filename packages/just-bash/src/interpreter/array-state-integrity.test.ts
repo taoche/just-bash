@@ -117,6 +117,72 @@ describe("structured array state integrity", () => {
     });
   });
 
+  it("preserves nameref targets for indirection", async () => {
+    const result = await new Bash().exec(`
+      values=(zero one)
+      one=wrong
+      declare -n ref='values[i += 1]'
+      i=0
+      printf '<%s>|i=%s\n' "\${!ref}" "$i"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "<values[i += 1]>|i=0\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("resolves indexed nameref defaults through a fresh assignment target", async () => {
+    const result = await new Bash().exec(`
+      values=(zero)
+      declare -n element='values[i += 1]'
+      i=0
+      result=\${element:=assigned}
+      printf 'result=%s|i=%s|one=%s|two=%s\n' "$result" "$i" "\${values[1]-unset}" "\${values[2]-unset}"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "result=assigned|i=2|one=unset|two=assigned\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("preserves quoted mixed assign-default fields", async () => {
+    const result = await new Bash().exec(`
+      IFS=_
+      unset value
+      set -- \${value:="a_b"c_d}
+      printf '<%s>|<%s>|value=%s\n' "$1" "$2" "$value"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "<a_bc>|<d>|value=a_bc_d\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("preserves dynamic quoted operation words in prefixed expansions", async () => {
+    const result = await new Bash().exec(`
+      IFS=_
+      HOME=/home_user
+      unset missing
+      set -- x\${missing:-"$HOME"/bin}
+      printf 'default=<%s>\n' "$1"
+      value=set
+      set -- x\${value:+"$HOME"y}
+      printf 'alternative=<%s>\n' "$1"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "default=<x/home_user/bin>\nalternative=<x/home_usery>\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
   it("preserves associative nameref subscripts", async () => {
     const result = await new Bash().exec(`
       declare -A values=([key]=value)
