@@ -205,7 +205,9 @@ export async function smartWordSplit(
     const expanded =
       prepared?.type === "value"
         ? prepared.value
-        : await expandPartFn(ctx, part);
+        : prepared?.type === "operationWord"
+          ? ""
+          : await expandPartFn(ctx, part);
     segments.push({
       value: expanded,
       isSplittable: splittable,
@@ -341,6 +343,12 @@ export async function smartWordSplit(
       prevWasQuotedEmpty = false;
     } else {
       // Splittable: split by IFS using extended version that tracks trailing delimiters
+      if (pendingWordBreak && currentWord !== "") {
+        pushSplitWord(ctx, words, currentWord);
+        currentWord = "";
+        pendingWordBreak = false;
+        hasProducedWord = true;
+      }
       const {
         words: parts,
         hadLeadingDelimiter,
@@ -494,9 +502,17 @@ async function smartWordSplitWithUnquotedLiterals(
       // Splittable: check if it starts with IFS (causes word break)
       const startsWithIfsChar = startsWithIfs(segment.value, ifsChars);
 
+      if (pendingWordBreak && currentWord !== "") {
+        pushSplitWord(ctx, words, currentWord);
+        currentWord = "";
+        pendingWordBreak = false;
+        hasProducedWord = true;
+      }
+
       // If the segment starts with IFS and we have accumulated content,
       // finish the current word first
-      if (startsWithIfsChar && currentWord !== "") {
+      const flushedLeadingDelimiter = startsWithIfsChar && currentWord !== "";
+      if (flushedLeadingDelimiter) {
         pushSplitWord(ctx, words, currentWord);
         currentWord = "";
         hasProducedWord = true;
@@ -521,26 +537,29 @@ async function smartWordSplitWithUnquotedLiterals(
         hadLeadingDelimiter = true;
       }
 
-      if (parts.length === 0) {
+      const splitParts =
+        flushedLeadingDelimiter && parts[0] === "" ? parts.slice(1) : parts;
+
+      if (splitParts.length === 0) {
         // Empty expansion produces nothing
         if (hadTrailingDelimiter) {
           pendingWordBreak = true;
         }
-      } else if (parts.length === 1) {
-        currentWord += parts[0];
+      } else if (splitParts.length === 1) {
+        currentWord += splitParts[0];
         hasProducedWord = true;
         pendingWordBreak = hadTrailingDelimiter;
       } else {
         // Multiple results from split
-        currentWord += parts[0];
+        currentWord += splitParts[0];
         pushSplitWord(ctx, words, currentWord);
         hasProducedWord = true;
 
-        for (let i = 1; i < parts.length - 1; i++) {
-          pushSplitWord(ctx, words, parts[i]);
+        for (let i = 1; i < splitParts.length - 1; i++) {
+          pushSplitWord(ctx, words, splitParts[i]);
         }
 
-        currentWord = parts[parts.length - 1];
+        currentWord = splitParts[splitParts.length - 1];
         pendingWordBreak = hadTrailingDelimiter;
       }
     }
