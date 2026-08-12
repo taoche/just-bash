@@ -81,7 +81,7 @@ async function shouldUseOperationWord(
   return word.parts;
 }
 
-function getMixedOperationWordParts(
+function getOperationWordParts(
   part: ParameterExpansionPart,
 ): WordPart[] | null {
   const op = part.operation;
@@ -95,21 +95,7 @@ function getMixedOperationWordParts(
   }
 
   const word = op.word;
-  if (!word || word.parts.length <= 1) {
-    return null;
-  }
-
-  const hasSimpleQuotedParts = word.parts.some((item) =>
-    isSimpleQuotedLiteral(item),
-  );
-  const hasUnquotedParts = word.parts.some(
-    (item) =>
-      item.type === "Literal" ||
-      item.type === "ParameterExpansion" ||
-      item.type === "CommandSubstitution" ||
-      item.type === "ArithmeticExpansion",
-  );
-  return hasSimpleQuotedParts && hasUnquotedParts ? word.parts : null;
+  return word?.parts ?? null;
 }
 
 /**
@@ -145,7 +131,20 @@ async function hasMixedQuotedDefaultValue(
 ): Promise<WordPart[] | null> {
   if (part.type !== "ParameterExpansion") return null;
 
-  if (!getMixedOperationWordParts(part)) return null;
+  const operationWordParts = getOperationWordParts(part);
+  if (!operationWordParts || operationWordParts.length <= 1) return null;
+  const hasSimpleQuotedParts = operationWordParts.some((item) =>
+    isSimpleQuotedLiteral(item),
+  );
+  const hasUnquotedParts = operationWordParts.some(
+    (item) =>
+      item.type === "Literal" ||
+      item.type === "ParameterExpansion" ||
+      item.type === "CommandSubstitution" ||
+      item.type === "ArithmeticExpansion",
+  );
+  if (!hasSimpleQuotedParts || !hasUnquotedParts) return null;
+
   const opWordParts = await shouldUseOperationWord(ctx, part);
   return opWordParts;
 }
@@ -240,8 +239,21 @@ export async function smartWordSplit(
   // to preserve quote boundaries within the default value.
   if (wordParts.length === 1 && wordParts[0].type === "ParameterExpansion") {
     const paramPart = wordParts[0];
-    const potentialMixedParts = getMixedOperationWordParts(paramPart);
-    const opWordParts = potentialMixedParts
+    const operationWordParts = getOperationWordParts(paramPart);
+    const hasMixedParts =
+      operationWordParts !== null &&
+      operationWordParts.length > 1 &&
+      operationWordParts.some(
+        (item) => item.type === "DoubleQuoted" || item.type === "SingleQuoted",
+      ) &&
+      operationWordParts.some(
+        (item) =>
+          item.type === "Literal" ||
+          item.type === "ParameterExpansion" ||
+          item.type === "CommandSubstitution" ||
+          item.type === "ArithmeticExpansion",
+      );
+    const opWordParts = hasMixedParts
       ? await shouldUseOperationWord(ctx, paramPart)
       : null;
     if (opWordParts && opWordParts.length > 0) {
