@@ -985,7 +985,7 @@ async function resolveIndexedParameter(
     ctx,
     arrayName,
     subscript,
-    true,
+    false,
   );
   return index === undefined ? target : `${arrayName}[${index}]`;
 }
