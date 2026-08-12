@@ -78,6 +78,21 @@ describe("structured array state integrity", () => {
     });
   });
 
+  it("preserves a leading IFS boundary after an array default expansion", async () => {
+    const result = await new Bash().exec(`
+      values=('' x)
+      set -- prefix=\${values[@]-fallback}
+      printf 'count=%s\n' "$#"
+      for value; do printf 'arg=<%s>\n' "$value"; done
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "count=2\narg=<prefix=>\narg=<x>\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
   it.each([
     ["export", "readonly x=old; export x=new"],
     ["export -n", "readonly x=old; export -n x=new"],

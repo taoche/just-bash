@@ -409,6 +409,12 @@ export async function smartWordSplit(
         ctx.limits.maxArrayElements,
       );
 
+      if (hadLeadingDelimiter && currentWord !== "") {
+        pushSplitWord(ctx, words, currentWord);
+        currentWord = "";
+        hasProducedWord = true;
+      }
+
       // If the previous segment was a quoted empty and this splittable segment
       // has leading IFS delimiter, the quoted empty should anchor an empty word
       if (prevWasQuotedEmpty && hadLeadingDelimiter && currentWord === "") {
