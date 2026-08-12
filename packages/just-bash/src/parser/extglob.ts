@@ -298,7 +298,7 @@ function findBraceEnds(value: string): Map<number, number> {
     hasComma: boolean;
     hasNestedBrace: boolean;
     hasNestedExpansion: boolean;
-    content: string[];
+    rangeContent: string | undefined;
   }> = [];
   let quote: Quote | undefined;
   let hasUnterminatedBracket = false;
@@ -308,7 +308,10 @@ function findBraceEnds(value: string): Map<number, number> {
     const brace = braces[braces.length - 1];
 
     if (quote) {
-      if (character === "," && brace) brace.hasComma = true;
+      if (brace) {
+        if (character === ",") brace.hasComma = true;
+        brace.rangeContent = undefined;
+      }
       if (character === "\\" && quote !== "'" && index + 1 < value.length) {
         index += 1;
       } else if (character === (quote === "$'" ? "'" : quote)) {
@@ -318,21 +321,21 @@ function findBraceEnds(value: string): Map<number, number> {
     }
 
     if (character === "$" && value[index + 1] === "'") {
-      if (brace) brace.content.push("\0");
+      if (brace) brace.rangeContent = undefined;
       quote = "$'";
       index += 1;
       continue;
     }
 
     if (character === "'" || character === '"') {
-      if (brace) brace.content.push("\0");
+      if (brace) brace.rangeContent = undefined;
       quote = character;
       continue;
     }
 
     if (character === "\\" && index + 1 < value.length) {
       if (brace) {
-        brace.content.push("\0");
+        brace.rangeContent = undefined;
         if (value[index + 1] === ",") brace.hasComma = true;
       }
       index += 1;
@@ -342,7 +345,7 @@ function findBraceEnds(value: string): Map<number, number> {
     if (character === "$" && value[index + 1] === "{") {
       const end = findParameterExpansionEnd(value, index, false);
       if (end === -1) return ends;
-      if (brace) brace.content.push("\0");
+      if (brace) brace.rangeContent = undefined;
       index = end;
       continue;
     }
@@ -354,7 +357,7 @@ function findBraceEnds(value: string): Map<number, number> {
     ) {
       const end = findCommandSubstitutionEnd(value, index, false);
       if (end === -1) return ends;
-      if (brace) brace.content.push("\0");
+      if (brace) brace.rangeContent = undefined;
       index = end;
       continue;
     }
@@ -363,7 +366,7 @@ function findBraceEnds(value: string): Map<number, number> {
       const close = findBacktickClose(value, index, false);
       if (close === -1) return ends;
       if (brace) {
-        brace.content.push("\0");
+        brace.rangeContent = undefined;
         const comma = value.indexOf(",", index + 1);
         brace.hasComma ||= comma !== -1 && comma < close;
       }
@@ -375,7 +378,7 @@ function findBraceEnds(value: string): Map<number, number> {
       const close = findBracketExpressionEnd(value, index, false);
       if (close !== -1) {
         if (brace) {
-          brace.content.push("\0");
+          brace.rangeContent = undefined;
           const comma = value.indexOf(",", index + 1);
           brace.hasComma ||= comma !== -1 && comma < close;
         }
@@ -393,7 +396,7 @@ function findBraceEnds(value: string): Map<number, number> {
         hasComma: false,
         hasNestedBrace: false,
         hasNestedExpansion: false,
-        content: [],
+        rangeContent: "",
       });
     } else if (character === "}") {
       const closedBrace = braces.pop();
@@ -403,7 +406,8 @@ function findBraceEnds(value: string): Map<number, number> {
         closedBrace.hasComma ||
         closedBrace.hasNestedExpansion ||
         (!closedBrace.hasNestedBrace &&
-          isBraceRangeContent(closedBrace.content.join("")));
+          closedBrace.rangeContent !== undefined &&
+          isBraceRangeContent(closedBrace.rangeContent));
       if (isExpansion) {
         ends.set(closedBrace.start, index + 1);
         const parent = braces[braces.length - 1];
@@ -411,7 +415,12 @@ function findBraceEnds(value: string): Map<number, number> {
       }
     } else if (brace) {
       if (character === ",") brace.hasComma = true;
-      brace.content.push(character);
+      if (brace.rangeContent !== undefined) {
+        brace.rangeContent =
+          brace.rangeContent.length < 32
+            ? brace.rangeContent + character
+            : undefined;
+      }
     }
   }
 
