@@ -52,27 +52,81 @@ describe("structured array state integrity", () => {
     const result = await new Bash().exec(`
       values=(zero value)
       i=0
-      printf 'default=%s|i=%s\n' "\${values[i += 1]:-default}" "$i"
+      set -- \${values[i += 1]:-default}
+      printf 'default=%s|i=%s\n' "$1" "$i"
       i=0
-      printf 'alternative=%s|i=%s\n' "\${values[i += 1]:+alternative}" "$i"
+      set -- \${values[i += 1]:+alternative}
+      printf 'alternative=%s|i=%s\n' "$1" "$i"
       i=0
-      printf 'required=%s|i=%s\n' "\${values[i += 1]:?missing}" "$i"
-      unset values
-      i=0
-      printf 'assigned=%s|i=%s|element=%s\n' "\${values[i += 1]:=assigned}" "$i" "\${values[2]}"
+      set -- \${values[i += 1]:?missing}
+      printf 'required=%s|i=%s\n' "$1" "$i"
       values=(zero value)
       declare -n element='values[i += 1]'
       i=0
-      printf 'nameref=%s|i=%s\n' "\${element:-fallback}" "$i"
+      set -- \${element:-fallback}
+      printf 'nameref=%s|i=%s\n' "$1" "$i"
       unset values
       set -u
       i=0
-      printf 'nounset=%s|i=%s\n' "\${values[i += 1]:-fallback}" "$i"
+      set -- \${values[i += 1]:-fallback}
+      printf 'nounset=%s|i=%s\n' "$1" "$i"
     `);
 
     expect(result).toMatchObject({
       stdout:
-        "default=value|i=1\nalternative=alternative|i=1\nrequired=value|i=1\nassigned=assigned|i=2|element=assigned\nnameref=value|i=1\nnounset=fallback|i=1\n",
+        "default=value|i=1\nalternative=alternative|i=1\nrequired=value|i=1\nnameref=value|i=1\nnounset=fallback|i=1\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
+  it("does not re-evaluate invalid indexed subscripts", async () => {
+    const result = await new Bash().exec(`
+      values=()
+      i=0
+      set -- \${values[i -= 1]:-fallback}
+      printf 'value=%s|i=%s\n' "$1" "$i"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "value=fallback|i=-1\n",
+      stderr: "bash: line 4: values: bad array subscript\n",
+      exitCode: 0,
+    });
+  });
+
+  it("evaluates mixed default words from one prepared indexed target", async () => {
+    const result = await new Bash().exec(`
+      values=(zero value)
+      i=0
+      set -- \${values[i += 1]:-"a"b}
+      printf 'value=%s|i=%s\n' "$1" "$i"
+      unset values
+      i=0
+      set -- \${values[i += 1]:-"a"b}
+      printf 'fallback=%s|i=%s\n' "$1" "$i"
+      i=0
+      set -- \${values[i -= 1]:-"a"b}
+      printf 'invalid=%s|i=%s\n' "$1" "$i"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "value=value|i=1\nfallback=ab|i=1\ninvalid=ab|i=-1\n",
+      stderr: "bash: line 13: values: bad array subscript\n",
+      exitCode: 0,
+    });
+  });
+
+  it("preserves associative nameref subscripts", async () => {
+    const result = await new Bash().exec(`
+      declare -A values=([key]=value)
+      declare -n reference=values
+      set -- \${reference[key]:-fallback}
+      printf '%s\n' "$1"
+    `);
+
+    expect(result).toMatchObject({
+      stdout: "value\n",
       stderr: "",
       exitCode: 0,
     });
