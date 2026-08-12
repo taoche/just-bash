@@ -345,6 +345,7 @@ export class Parser {
           contentWord,
           heredoc.stripTabs,
           heredoc.quoted,
+          content.heredocTerminated ?? false,
         );
       }
     }
@@ -412,6 +413,9 @@ export class Parser {
       const stmt = this.parseStatement();
       if (stmt) {
         statements.push(stmt);
+      }
+      if (this.check(TokenType.HEREDOC_CONTENT)) {
+        this.processHeredocs();
       }
       // Don't skip case terminators (;;, ;&, ;;&) at script level - they're syntax errors
       this.skipSeparators(false);

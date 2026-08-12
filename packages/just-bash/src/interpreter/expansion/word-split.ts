@@ -46,87 +46,24 @@ export type ExpandPartFn = (
   part: WordPart,
 ) => Promise<string>;
 
-export type PreparedMixedParameter = {
-  value: string;
-  selectedWordParts?: WordPart[];
-};
+export type PreparedMixedParameter =
+  | { type: "value"; value: string }
+  | {
+      type: "operationWord";
+      wordParts: WordPart[];
+      assignmentParameter?: string;
+    };
 
 export type PrepareMixedParameterFn = (
   ctx: InterpreterContext,
   part: ParameterExpansionPart,
 ) => Promise<PreparedMixedParameter | null>;
 
-/**
- * Check if a ParameterExpansion with a default/alternative value should use that value.
- * Returns the operation word parts if the value should be used, null otherwise.
- */
-function getOperationWordParts(
-  part: ParameterExpansionPart,
-): WordPart[] | null {
-  const op = part.operation;
-  if (
-    !op ||
-    (op.type !== "DefaultValue" &&
-      op.type !== "AssignDefault" &&
-      op.type !== "UseAlternative")
-  ) {
-    return null;
-  }
-
-  const word = op.word;
-  return word?.parts ?? null;
-}
-
-/**
- * Check if a DoubleQuoted part contains only simple literals (no expansions).
- * This is used to determine if special IFS handling is needed.
- */
-function isSimpleQuotedLiteral(part: WordPart): boolean {
-  if (part.type === "SingleQuoted") {
-    return true; // Single quotes always contain only literals
-  }
-  if (part.type === "DoubleQuoted") {
-    const dqPart = part as { parts: WordPart[] };
-    // Check that all parts inside the double quotes are literals
-    return dqPart.parts.every((p) => p.type === "Literal");
-  }
-  return false;
-}
-
-/**
- * Check if a ParameterExpansion has a default/alternative value with mixed quoted/unquoted parts.
- * These need special handling to preserve quote boundaries during IFS splitting.
- *
- * This function returns non-null only when:
- * 1. The default value has mixed quoted and unquoted parts
- * 2. The quoted parts contain only simple literals (no $@, $*, or other expansions)
- *
- * Cases like ${var:-"$@"x} should NOT use special handling because $@ has special
- * behavior that needs to be preserved.
- */
-async function hasMixedQuotedDefaultValue(
+export type AssignPreparedDefaultFn = (
   ctx: InterpreterContext,
-  part: WordPart,
-  prepareMixedParameter: PrepareMixedParameterFn,
-): Promise<WordPart[] | null> {
-  if (part.type !== "ParameterExpansion") return null;
-
-  const operationWordParts = getOperationWordParts(part);
-  if (!operationWordParts || operationWordParts.length <= 1) return null;
-  const hasSimpleQuotedParts = operationWordParts.some((item) =>
-    isSimpleQuotedLiteral(item),
-  );
-  const hasUnquotedParts = operationWordParts.some(
-    (item) =>
-      item.type === "Literal" ||
-      item.type === "ParameterExpansion" ||
-      item.type === "CommandSubstitution" ||
-      item.type === "ArithmeticExpansion",
-  );
-  if (!hasSimpleQuotedParts || !hasUnquotedParts) return null;
-
-  return (await prepareMixedParameter(ctx, part))?.selectedWordParts ?? null;
-}
+  parameter: string,
+  value: string,
+) => Promise<void>;
 
 /**
  * Check if a word part is splittable (subject to IFS splitting).
@@ -199,7 +136,10 @@ type SplitSegment = {
   globPattern: string;
   isSplittable: boolean;
   isQuoted: boolean;
-  mixedDefaultParts?: WordPart[];
+  preparedOperationWord?: Extract<
+    PreparedMixedParameter,
+    { type: "operationWord" }
+  >;
 };
 
 async function appendSplitSegments(
@@ -208,7 +148,6 @@ async function appendSplitSegments(
   expandPartFn: ExpandPartFn,
   prepareMixedParameter: PrepareMixedParameterFn,
   segments: SplitSegment[],
-  inStructuredExtglob = false,
 ): Promise<boolean> {
   let hasSplittablePart = false;
 
@@ -228,7 +167,6 @@ async function appendSplitSegments(
           expandPartFn,
           prepareMixedParameter,
           segments,
-          true,
         );
         hasSplittablePart ||= alternativeHasSplittablePart;
         if (index < extglob.alternatives.length - 1) {
@@ -256,11 +194,12 @@ async function appendSplitSegments(
       part.type === "ParameterExpansion"
         ? await prepareMixedParameter(ctx, part)
         : null;
-    const mixedDefaultParts =
-      !inStructuredExtglob && splittable
-        ? await hasMixedQuotedDefaultValue(ctx, part, prepareMixedParameter)
-        : null;
-    const expanded = prepared ? prepared.value : await expandPartFn(ctx, part);
+    const expanded =
+      prepared?.type === "value"
+        ? prepared.value
+        : prepared?.type === "operationWord"
+          ? ""
+        : await expandPartFn(ctx, part);
     const globPattern =
       part.type === "DoubleQuoted" || part.type === "SingleQuoted"
         ? escapeGlobChars(expanded)
@@ -272,7 +211,8 @@ async function appendSplitSegments(
       globPattern,
       isSplittable: splittable,
       isQuoted,
-      mixedDefaultParts: mixedDefaultParts ?? undefined,
+      preparedOperationWord:
+        prepared?.type === "operationWord" ? prepared : undefined,
     });
     hasSplittablePart ||= splittable;
   }
@@ -304,6 +244,7 @@ export async function smartWordSplit(
   _ifsPattern: string,
   expandPartFn: ExpandPartFn,
   prepareMixedParameter: PrepareMixedParameterFn,
+  assignPreparedDefault: AssignPreparedDefaultFn,
 ): Promise<SplitWord[]> {
   ctx.coverage?.hit("bash:expansion:word_split");
   const preparedMixedParameters = new Map<
@@ -324,32 +265,25 @@ export async function smartWordSplit(
   // to preserve quote boundaries within the default value.
   if (wordParts.length === 1 && wordParts[0].type === "ParameterExpansion") {
     const paramPart = wordParts[0];
-    const operationWordParts = getOperationWordParts(paramPart);
-    const hasMixedParts =
-      operationWordParts !== null &&
-      operationWordParts.length > 1 &&
-      operationWordParts.some(
-        (item) => item.type === "DoubleQuoted" || item.type === "SingleQuoted",
-      ) &&
-      operationWordParts.some(
-        (item) =>
-          item.type === "Literal" ||
-          item.type === "ParameterExpansion" ||
-          item.type === "CommandSubstitution" ||
-          item.type === "ArithmeticExpansion",
-      );
-    const prepared = hasMixedParts ? await prepare(ctx, paramPart) : null;
-    const opWordParts = prepared?.selectedWordParts;
-    if (opWordParts && opWordParts.length > 0) {
+    const prepared = await prepare(ctx, paramPart);
+    if (prepared?.type === "operationWord") {
       // Recursively word-split the default value's parts. Literal parts from
       // the default value are splittable because they are unquoted here.
-      return smartWordSplitWithUnquotedLiterals(
+      const split = await smartWordSplitWithUnquotedLiterals(
         ctx,
-        opWordParts,
+        prepared.wordParts,
         ifsChars,
         _ifsPattern,
         expandPartFn,
       );
+      if (prepared.assignmentParameter) {
+        await assignPreparedDefault(
+          ctx,
+          prepared.assignmentParameter,
+          split.value,
+        );
+      }
+      return split.words;
     }
   }
 
@@ -459,18 +393,37 @@ export async function smartWordSplit(
         currentGlobPattern += segment.globPattern;
         prevWasQuotedEmpty = segment.isQuoted && segment.value === "";
       }
-    } else if (segment.mixedDefaultParts) {
+    } else if (segment.preparedOperationWord) {
       // Special case: ParameterExpansion with mixed quoted/unquoted default value
       // We need to recursively word-split the default value's parts to preserve
       // quote boundaries. This handles cases like: 1${undefined:-"2_3"x_x"4_5"}6
       // where the quoted parts "2_3" and "4_5" should NOT be split by IFS.
-      const splitParts = await smartWordSplitWithUnquotedLiterals(
+      const split = await smartWordSplitWithUnquotedLiterals(
         ctx,
-        segment.mixedDefaultParts,
+        segment.preparedOperationWord.wordParts,
         ifsChars,
         _ifsPattern,
         expandPartFn,
       );
+      if (segment.preparedOperationWord.assignmentParameter) {
+        await assignPreparedDefault(
+          ctx,
+          segment.preparedOperationWord.assignmentParameter,
+          split.value,
+        );
+      }
+      const flushedLeadingDelimiter =
+        split.hadLeadingDelimiter && currentWord !== "";
+      if (flushedLeadingDelimiter) {
+        pushSplitWord(ctx, words, currentWord, currentGlobPattern);
+        currentWord = "";
+        currentGlobPattern = "";
+        hasProducedWord = true;
+      }
+      const splitParts =
+        flushedLeadingDelimiter && split.words[0]?.value === ""
+          ? split.words.slice(1)
+          : split.words;
 
       if (splitParts.length === 0) {
         // Empty expansion produces nothing
@@ -497,8 +450,7 @@ export async function smartWordSplit(
         currentWord = splitParts[splitParts.length - 1].value;
         currentGlobPattern = splitParts[splitParts.length - 1].globPattern;
       }
-      // Reset pending word break after processing mixed default parts
-      pendingWordBreak = false;
+      pendingWordBreak = split.hadTrailingDelimiter;
       prevWasQuotedEmpty = false;
     } else {
       // Splittable: split by IFS using extended version that tracks trailing delimiters
@@ -608,7 +560,12 @@ async function smartWordSplitWithUnquotedLiterals(
   ifsChars: string,
   _ifsPattern: string,
   expandPartFn: ExpandPartFn,
-): Promise<SplitWord[]> {
+): Promise<{
+  words: SplitWord[];
+  value: string;
+  hadLeadingDelimiter: boolean;
+  hadTrailingDelimiter: boolean;
+}> {
   // Expand all parts and track if they are splittable
   // In this context, Literal parts ARE splittable
   type Segment = { value: string; globPattern: string; isSplittable: boolean };
@@ -642,6 +599,7 @@ async function smartWordSplitWithUnquotedLiterals(
   let currentGlobPattern = "";
   let hasProducedWord = false;
   let pendingWordBreak = false;
+  let hadLeadingDelimiter = false;
 
   for (const segment of segments) {
     if (!segment.isSplittable) {
@@ -675,11 +633,23 @@ async function smartWordSplitWithUnquotedLiterals(
       }
 
       // Split by IFS using extended version
-      const { words: parts, hadTrailingDelimiter } = splitByIfsForExpansionEx(
+      const {
+        words: parts,
+        hadLeadingDelimiter: segmentHadLeadingDelimiter,
+        hadTrailingDelimiter,
+      } = splitByIfsForExpansionEx(
         segment.value,
         ifsChars,
         ctx.limits.maxArrayElements,
       );
+
+      if (
+        words.length === 0 &&
+        currentWord === "" &&
+        segmentHadLeadingDelimiter
+      ) {
+        hadLeadingDelimiter = true;
+      }
 
       if (parts.length === 0) {
         // Empty expansion produces nothing
@@ -715,5 +685,10 @@ async function smartWordSplitWithUnquotedLiterals(
     pushSplitWord(ctx, words, "", "");
   }
 
-  return words;
+  return {
+    words,
+    value: segments.map((segment) => segment.value).join(""),
+    hadLeadingDelimiter,
+    hadTrailingDelimiter: pendingWordBreak,
+  };
 }
