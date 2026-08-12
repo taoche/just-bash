@@ -81,6 +81,37 @@ async function shouldUseOperationWord(
   return word.parts;
 }
 
+function getMixedOperationWordParts(
+  part: ParameterExpansionPart,
+): WordPart[] | null {
+  const op = part.operation;
+  if (
+    !op ||
+    (op.type !== "DefaultValue" &&
+      op.type !== "AssignDefault" &&
+      op.type !== "UseAlternative")
+  ) {
+    return null;
+  }
+
+  const word = op.word;
+  if (!word || word.parts.length <= 1) {
+    return null;
+  }
+
+  const hasSimpleQuotedParts = word.parts.some((item) =>
+    isSimpleQuotedLiteral(item),
+  );
+  const hasUnquotedParts = word.parts.some(
+    (item) =>
+      item.type === "Literal" ||
+      item.type === "ParameterExpansion" ||
+      item.type === "CommandSubstitution" ||
+      item.type === "ArithmeticExpansion",
+  );
+  return hasSimpleQuotedParts && hasUnquotedParts ? word.parts : null;
+}
+
 /**
  * Check if a DoubleQuoted part contains only simple literals (no expansions).
  * This is used to determine if special IFS handling is needed.
@@ -114,29 +145,9 @@ async function hasMixedQuotedDefaultValue(
 ): Promise<WordPart[] | null> {
   if (part.type !== "ParameterExpansion") return null;
 
+  if (!getMixedOperationWordParts(part)) return null;
   const opWordParts = await shouldUseOperationWord(ctx, part);
-  if (!opWordParts || opWordParts.length <= 1) return null;
-
-  // Check if the operation word has simple quoted parts (only literals inside)
-  const hasSimpleQuotedParts = opWordParts.some((p) =>
-    isSimpleQuotedLiteral(p),
-  );
-  const hasUnquotedParts = opWordParts.some(
-    (p) =>
-      p.type === "Literal" ||
-      p.type === "ParameterExpansion" ||
-      p.type === "CommandSubstitution" ||
-      p.type === "ArithmeticExpansion",
-  );
-
-  // Only apply special handling when we have simple quoted literals and unquoted parts
-  // This handles cases like ${var:-"2_3"x_x"4_5"} where the IFS char should only
-  // split at the unquoted underscore, not inside the quoted strings
-  if (hasSimpleQuotedParts && hasUnquotedParts) {
-    return opWordParts;
-  }
-
-  return null;
+  return opWordParts;
 }
 
 /**
@@ -229,35 +240,20 @@ export async function smartWordSplit(
   // to preserve quote boundaries within the default value.
   if (wordParts.length === 1 && wordParts[0].type === "ParameterExpansion") {
     const paramPart = wordParts[0];
-    const opWordParts = await shouldUseOperationWord(ctx, paramPart);
+    const potentialMixedParts = getMixedOperationWordParts(paramPart);
+    const opWordParts = potentialMixedParts
+      ? await shouldUseOperationWord(ctx, paramPart)
+      : null;
     if (opWordParts && opWordParts.length > 0) {
-      // Check if the operation word has mixed quoted/unquoted parts
-      // that would benefit from recursive word splitting
-      const hasMixedParts =
-        opWordParts.length > 1 &&
-        opWordParts.some(
-          (p) => p.type === "DoubleQuoted" || p.type === "SingleQuoted",
-        ) &&
-        opWordParts.some(
-          (p) =>
-            p.type === "Literal" ||
-            p.type === "ParameterExpansion" ||
-            p.type === "CommandSubstitution" ||
-            p.type === "ArithmeticExpansion",
-        );
-
-      if (hasMixedParts) {
-        // Recursively word-split the default value's parts
-        // But we need special handling: Literal parts from the default value
-        // SHOULD be split because they're in an unquoted context
-        return smartWordSplitWithUnquotedLiterals(
-          ctx,
-          opWordParts,
-          ifsChars,
-          _ifsPattern,
-          expandPartFn,
-        );
-      }
+      // Recursively word-split the default value's parts. Literal parts from
+      // the default value are splittable because they are unquoted here.
+      return smartWordSplitWithUnquotedLiterals(
+        ctx,
+        opWordParts,
+        ifsChars,
+        _ifsPattern,
+        expandPartFn,
+      );
     }
   }
 

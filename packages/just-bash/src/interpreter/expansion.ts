@@ -945,7 +945,7 @@ async function expandPart(
 async function resolveIndexedParameter(
   ctx: InterpreterContext,
   parameter: string,
-): Promise<string> {
+): Promise<{ parameter: string; invalidSubscript: boolean }> {
   let target = parameter;
   let bracketMatch = target.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[(.+)\]$/);
   if (!bracketMatch && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(target)) {
@@ -957,7 +957,7 @@ async function resolveIndexedParameter(
   }
 
   if (!bracketMatch) {
-    return parameter;
+    return { parameter, invalidSubscript: false };
   }
 
   let arrayName = bracketMatch[1];
@@ -970,24 +970,31 @@ async function resolveIndexedParameter(
     subscript === "*" ||
     ctx.state.associativeArrays?.has(arrayName)
   ) {
-    return target;
+    return { parameter: target, invalidSubscript: false };
   }
 
   if (isNameref(ctx, arrayName)) {
     const resolved = resolveNameref(ctx, arrayName);
     if (!resolved || resolved.includes("[")) {
-      return target;
+      return { parameter: target, invalidSubscript: false };
     }
     arrayName = resolved;
+  }
+
+  if (ctx.state.associativeArrays?.has(arrayName)) {
+    return { parameter: `${arrayName}[${subscript}]`, invalidSubscript: false };
   }
 
   const index = await evaluateIndexedArraySubscript(
     ctx,
     arrayName,
     subscript,
-    false,
+    true,
   );
-  return index === undefined ? target : `${arrayName}[${index}]`;
+  if (index === undefined) {
+    return { parameter: target, invalidSubscript: true };
+  }
+  return { parameter: `${arrayName}[${index}]`, invalidSubscript: false };
 }
 
 // Async version of expandParameter for parameter expansions that contain command substitution
@@ -1054,7 +1061,8 @@ async function expandParameterAsync(
   }
 
   const assignmentParameter = parameter;
-  parameter = await resolveIndexedParameter(ctx, parameter);
+  const resolvedParameter = await resolveIndexedParameter(ctx, parameter);
+  parameter = resolvedParameter.parameter;
 
   // Operations that handle unset variables should not trigger nounset
   const skipNounset =
@@ -1064,7 +1072,9 @@ async function expandParameterAsync(
       operation.type === "UseAlternative" ||
       operation.type === "ErrorIfUnset");
 
-  const value = await getVariable(ctx, parameter, !skipNounset);
+  const value = resolvedParameter.invalidSubscript
+    ? ""
+    : await getVariable(ctx, parameter, !skipNounset);
 
   if (!operation) {
     return value;
@@ -1078,7 +1088,9 @@ async function expandParameterAsync(
       operation.type === "ErrorIfUnset" ||
       operation.type === "UseAlternative") &&
       !operation.checkEmpty);
-  const isUnset = needsUnsetCheck && !(await isVariableSet(ctx, parameter));
+  const isUnset =
+    resolvedParameter.invalidSubscript ||
+    (needsUnsetCheck && !(await isVariableSet(ctx, parameter)));
   // Compute isEmpty and effectiveValue using extracted helper
   const { isEmpty, effectiveValue } = computeIsEmpty(
     ctx,

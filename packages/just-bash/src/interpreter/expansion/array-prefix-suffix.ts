@@ -78,15 +78,6 @@ export async function handleArrayDefaultValue(
   const arrayMatch = paramPart.parameter.match(
     /^([a-zA-Z_][a-zA-Z0-9_]*)\[([@*])\]$/,
   );
-  const defaultHasArrayExpansion = op.word?.parts.some(
-    (part) =>
-      part.type === "ParameterExpansion" &&
-      !part.operation &&
-      /^[a-zA-Z_][a-zA-Z0-9_]*\[[@*]\]$/.test(part.parameter),
-  );
-  if (!arrayMatch && !defaultHasArrayExpansion) {
-    return null;
-  }
 
   // Determine if we should use the alternate/default value
   let shouldUseAlternate: boolean;
