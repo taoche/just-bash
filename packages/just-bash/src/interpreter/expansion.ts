@@ -1218,6 +1218,20 @@ async function prepareMixedParameter(
   if (!hasQuotedParts || !hasUnquotedParts) {
     return null;
   }
+  const hasQuotedMultiWordExpansion = operation.word.parts.some(
+    (part) =>
+      part.type === "DoubleQuoted" &&
+      part.parts.some(
+        (inner) =>
+          inner.type === "ParameterExpansion" &&
+          (inner.parameter === "@" ||
+            inner.parameter === "*" ||
+            /^[a-zA-Z_][a-zA-Z0-9_]*\[[@*]\]$/.test(inner.parameter)),
+      ),
+  );
+  if (hasQuotedMultiWordExpansion) {
+    return null;
+  }
 
   const resolvedParameter = await resolveIndexedParameter(ctx, part.parameter);
   const value = resolvedParameter.invalidSubscript
