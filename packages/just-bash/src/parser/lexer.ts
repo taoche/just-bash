@@ -10,7 +10,7 @@
  * - Escape sequences
  */
 
-import { findExtglobClose } from "./extglob.js";
+import { findCommandSubstitutionEnd, findExtglobClose } from "./extglob.js";
 import { readHeredocDelimiter } from "./parser-substitution.js";
 
 // Default max heredoc size to prevent memory exhaustion (10MB)
@@ -1662,6 +1662,22 @@ export class Lexer {
         let doubleQuoteStartCol = col;
         while (depth > 0 && pos < len) {
           const c = input[pos];
+          if (c === "$" && input[pos + 1] === "(") {
+            const end = findCommandSubstitutionEnd(input, pos, false);
+            if (end !== -1) {
+              const substitution = input.slice(pos, end + 1);
+              value += substitution;
+              for (const substitutionCharacter of substitution) {
+                if (substitutionCharacter === "\n") {
+                  ln++;
+                  col = 0;
+                }
+                col++;
+              }
+              pos = end + 1;
+              continue;
+            }
+          }
           // Handle backslash-newline line continuation inside ${...}
           if (c === "\\" && pos + 1 < len && input[pos + 1] === "\n") {
             // Skip both the backslash and the newline

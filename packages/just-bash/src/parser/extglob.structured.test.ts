@@ -92,7 +92,9 @@ describe("structured extglobs", () => {
   });
 
   it("keeps parameter and command substitutions opaque while scanning", () => {
-    const glob = getGlob("echo @(${value:-)}|\"$(printf ')')\"|final)");
+    const glob = getGlob(
+      "echo @(${value:-$(printf })}|\"$(printf ')')\"|final)",
+    );
 
     expect(glob.extglob?.alternatives).toHaveLength(3);
     expect(glob.extglob?.alternatives[0].parts[0]).toMatchObject({
@@ -140,5 +142,11 @@ describe("structured extglobs", () => {
 
   it("stops lexer scans at an unterminated extglob newline", () => {
     expect(findExtglobClose("@(foo\nbar)", 1, true)).toBe(-1);
+  });
+
+  it("bounds nested command substitution scans", () => {
+    const value = `@(${"$(".repeat(201)}x${")".repeat(201)})`;
+
+    expect(findExtglobClose(value, 1, false)).toBe(-1);
   });
 });

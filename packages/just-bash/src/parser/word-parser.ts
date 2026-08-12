@@ -13,6 +13,7 @@ import {
   type WordPart,
 } from "../ast/types.js";
 import { parseArithmeticExpression } from "./arithmetic-parser.js";
+import { findCommandSubstitutionEnd } from "./extglob.js";
 import { TokenType } from "./lexer.js";
 import type { Parser } from "./parser.js";
 
@@ -231,6 +232,13 @@ export function findParameterOperationEnd(
         }
       }
       if (i < value.length) i++; // Skip closing quote
+      continue;
+    }
+
+    if (char === "$" && value[i + 1] === "(") {
+      const end = findCommandSubstitutionEnd(value, i, false);
+      if (end === -1) return i;
+      i = end + 1;
       continue;
     }
 

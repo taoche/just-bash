@@ -1,9 +1,11 @@
 type Quote = "'" | '"' | "$'";
+const MAX_SUBSTITUTION_SCAN_DEPTH = 200;
 
 function findParameterExpansionEnd(
   value: string,
   start: number,
   stopAtNewline: boolean,
+  substitutionDepth = 0,
 ): number {
   let depth = 1;
   let quote: Quote | undefined;
@@ -34,6 +36,21 @@ function findParameterExpansionEnd(
     if (stopAtNewline && character === "\n") {
       return -1;
     }
+    if (
+      character === "$" &&
+      value[index + 1] === "(" &&
+      value[index + 2] !== "("
+    ) {
+      const end = findCommandSubstitutionEnd(
+        value,
+        index,
+        stopAtNewline,
+        substitutionDepth + 1,
+      );
+      if (end === -1) return -1;
+      index = end;
+      continue;
+    }
     if (character === "{") depth += 1;
     else if (character === "}") {
       depth -= 1;
@@ -44,11 +61,15 @@ function findParameterExpansionEnd(
   return -1;
 }
 
-function findCommandSubstitutionEnd(
+export function findCommandSubstitutionEnd(
   value: string,
   start: number,
   stopAtNewline: boolean,
+  substitutionDepth = 0,
 ): number {
+  if (substitutionDepth >= MAX_SUBSTITUTION_SCAN_DEPTH) {
+    return -1;
+  }
   let depth = 1;
   let quote: Quote | undefined;
 
@@ -89,7 +110,12 @@ function findCommandSubstitutionEnd(
       value[index + 1] === "(" &&
       value[index + 2] !== "("
     ) {
-      const end = findCommandSubstitutionEnd(value, index, stopAtNewline);
+      const end = findCommandSubstitutionEnd(
+        value,
+        index,
+        stopAtNewline,
+        substitutionDepth + 1,
+      );
       if (end === -1) return -1;
       index = end;
       continue;
@@ -124,6 +150,17 @@ export function findExtglobClose(
     const character = value[index];
 
     if (quote) {
+      if (
+        quote === '"' &&
+        character === "$" &&
+        value[index + 1] === "(" &&
+        value[index + 2] !== "("
+      ) {
+        const end = findCommandSubstitutionEnd(value, index, stopAtNewline);
+        if (end === -1) return -1;
+        index = end;
+        continue;
+      }
       if (character === "\\" && quote !== "'" && index + 1 < value.length) {
         index += 1;
       } else if (character === (quote === "$'" ? "'" : quote)) {
@@ -212,6 +249,17 @@ export function splitExtglobAlternatives(
     const character = content[index];
 
     if (quote) {
+      if (
+        quote === '"' &&
+        character === "$" &&
+        content[index + 1] === "(" &&
+        content[index + 2] !== "("
+      ) {
+        const end = findCommandSubstitutionEnd(content, index, false);
+        if (end === -1) break;
+        index = end;
+        continue;
+      }
       if (character === "\\" && quote !== "'" && index + 1 < content.length) {
         index += 1;
       } else if (character === (quote === "$'" ? "'" : quote)) {
