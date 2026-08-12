@@ -48,6 +48,36 @@ describe("structured array state integrity", () => {
     });
   });
 
+  it("evaluates indexed subscripts once while reading colon parameter operators", async () => {
+    const result = await new Bash().exec(`
+      values=(zero value)
+      i=0
+      printf 'default=%s|i=%s\n' "\${values[i += 1]:-default}" "$i"
+      i=0
+      printf 'alternative=%s|i=%s\n' "\${values[i += 1]:+alternative}" "$i"
+      i=0
+      printf 'required=%s|i=%s\n' "\${values[i += 1]:?missing}" "$i"
+      unset values
+      i=0
+      printf 'assigned=%s|i=%s|element=%s\n' "\${values[i += 1]:=assigned}" "$i" "\${values[2]}"
+      values=(zero value)
+      declare -n element='values[i += 1]'
+      i=0
+      printf 'nameref=%s|i=%s\n' "\${element:-fallback}" "$i"
+      unset values
+      set -u
+      i=0
+      printf 'nounset=%s|i=%s\n' "\${values[i += 1]:-fallback}" "$i"
+    `);
+
+    expect(result).toMatchObject({
+      stdout:
+        "default=value|i=1\nalternative=alternative|i=1\nrequired=value|i=1\nassigned=assigned|i=2|element=assigned\nnameref=value|i=1\nnounset=fallback|i=1\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
   it.each([
     ["export", "readonly x=old; export x=new"],
     ["export -n", "readonly x=old; export -n x=new"],

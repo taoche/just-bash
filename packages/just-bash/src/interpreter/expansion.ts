@@ -78,7 +78,11 @@ import {
   patternHasCommandSubstitution,
 } from "./expansion/pattern-expansion.js";
 import { applyTildeExpansion } from "./expansion/tilde.js";
-import { getVariable, isVariableSet } from "./expansion/variable.js";
+import {
+  evaluateIndexedArraySubscript,
+  getVariable,
+  isVariableSet,
+} from "./expansion/variable.js";
 import {
   expandWordWithGlobImpl,
   type WordGlobExpansionDeps,
@@ -938,6 +942,54 @@ async function expandPart(
   }
 }
 
+async function resolveIndexedParameter(
+  ctx: InterpreterContext,
+  parameter: string,
+): Promise<string> {
+  let target = parameter;
+  let bracketMatch = target.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[(.+)\]$/);
+  if (!bracketMatch && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(target)) {
+    const resolved = resolveNameref(ctx, target);
+    if (resolved && resolved !== target) {
+      target = resolved;
+      bracketMatch = target.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[(.+)\]$/);
+    }
+  }
+
+  if (!bracketMatch) {
+    return parameter;
+  }
+
+  let arrayName = bracketMatch[1];
+  const subscript = bracketMatch[2];
+  if (
+    arrayName === "FUNCNAME" ||
+    arrayName === "BASH_LINENO" ||
+    arrayName === "BASH_SOURCE" ||
+    subscript === "@" ||
+    subscript === "*" ||
+    ctx.state.associativeArrays?.has(arrayName)
+  ) {
+    return target;
+  }
+
+  if (isNameref(ctx, arrayName)) {
+    const resolved = resolveNameref(ctx, arrayName);
+    if (!resolved || resolved.includes("[")) {
+      return target;
+    }
+    arrayName = resolved;
+  }
+
+  const index = await evaluateIndexedArraySubscript(
+    ctx,
+    arrayName,
+    subscript,
+    true,
+  );
+  return index === undefined ? target : `${arrayName}[${index}]`;
+}
+
 // Async version of expandParameter for parameter expansions that contain command substitution
 async function expandParameterAsync(
   ctx: InterpreterContext,
@@ -1001,6 +1053,9 @@ async function expandParameterAsync(
     }
   }
 
+  const assignmentParameter = parameter;
+  parameter = await resolveIndexedParameter(ctx, parameter);
+
   // Operations that handle unset variables should not trigger nounset
   const skipNounset =
     operation &&
@@ -1015,7 +1070,15 @@ async function expandParameterAsync(
     return value;
   }
 
-  const isUnset = !(await isVariableSet(ctx, parameter));
+  const needsUnsetCheck =
+    operation.type === "Transform" ||
+    operation.type === "Indirection" ||
+    ((operation.type === "DefaultValue" ||
+      operation.type === "AssignDefault" ||
+      operation.type === "ErrorIfUnset" ||
+      operation.type === "UseAlternative") &&
+      !operation.checkEmpty);
+  const isUnset = needsUnsetCheck && !(await isVariableSet(ctx, parameter));
   // Compute isEmpty and effectiveValue using extracted helper
   const { isEmpty, effectiveValue } = computeIsEmpty(
     ctx,
@@ -1038,7 +1101,7 @@ async function expandParameterAsync(
     case "AssignDefault":
       return handleAssignDefault(
         ctx,
-        parameter,
+        assignmentParameter,
         operation,
         opCtx,
         expandWordPartsAsync,
