@@ -57,6 +57,7 @@ import {
   hasGlobPattern,
 } from "./expansion/glob-escape.js";
 import {
+  assignDefaultValue,
   computeIsEmpty,
   handleArrayKeys,
   handleAssignDefault,
@@ -87,14 +88,21 @@ import {
   expandWordWithGlobImpl,
   type WordGlobExpansionDeps,
 } from "./expansion/word-glob-expansion.js";
-import { smartWordSplit } from "./expansion/word-split.js";
+import {
+  type PreparedMixedParameter,
+  smartWordSplit,
+} from "./expansion/word-split.js";
 import {
   buildIfsCharClassPattern,
   getIfs,
   isIfsEmpty,
   splitByIfsForExpansion,
 } from "./helpers/ifs.js";
-import { isNameref, resolveNameref } from "./helpers/nameref.js";
+import {
+  isNameref,
+  resolveNameref,
+  resolveNamerefForAssignment,
+} from "./helpers/nameref.js";
 import { getLiteralValue, isQuotedPart } from "./helpers/word-parts.js";
 import { openProcessSubstitution } from "./process-substitution.js";
 import type { InterpreterContext } from "./types.js";
@@ -507,6 +515,7 @@ function createWordGlobDeps(): WordGlobExpansionDeps {
     expandPart,
     expandParameterAsync,
     prepareMixedParameter,
+    assignPreparedDefault: assignParameterDefaultValue,
     hasBraceExpansion,
     evaluateArithmetic,
     buildIfsCharClassPattern,
@@ -998,14 +1007,38 @@ async function resolveIndexedParameter(
   return { parameter: `${arrayName}[${index}]`, invalidSubscript: false };
 }
 
+async function assignParameterDefaultValue(
+  ctx: InterpreterContext,
+  parameter: string,
+  value: string,
+): Promise<void> {
+  const assignmentParameter = resolveNamerefForAssignment(
+    ctx,
+    parameter,
+    value,
+  );
+  if (assignmentParameter === null) return;
+  if (assignmentParameter === undefined) {
+    throw new BadSubstitutionError(parameter);
+  }
+
+  const resolvedParameter = await resolveIndexedParameter(
+    ctx,
+    assignmentParameter,
+  );
+  if (resolvedParameter.invalidSubscript) return;
+  await assignDefaultValue(ctx, resolvedParameter.parameter, value);
+}
+
 async function prepareMixedParameter(
   ctx: InterpreterContext,
   part: ParameterExpansionPart,
-): Promise<{ value: string; selectedWordParts?: WordPart[] } | null> {
+): Promise<PreparedMixedParameter | null> {
   const operation = part.operation;
   if (
     !operation ||
     (operation.type !== "DefaultValue" &&
+      operation.type !== "AssignDefault" &&
       operation.type !== "UseAlternative") ||
     !operation.word ||
     operation.word.parts.length <= 1 ||
@@ -1047,9 +1080,15 @@ async function prepareMixedParameter(
       ? !isUnset && !(operation.checkEmpty && isEmpty)
       : isUnset || (operation.checkEmpty && isEmpty);
 
+  if (!useOperationWord) {
+    return { type: "value", value: effectiveValue };
+  }
+
   return {
-    value: effectiveValue,
-    selectedWordParts: useOperationWord ? operation.word.parts : undefined,
+    type: "operationWord",
+    wordParts: operation.word.parts,
+    assignmentParameter:
+      operation.type === "AssignDefault" ? part.parameter : undefined,
   };
 }
 
@@ -1061,6 +1100,18 @@ async function expandParameterAsync(
 ): Promise<string> {
   let { parameter } = part;
   const { operation } = part;
+
+  if (operation?.type === "Indirection" && isNameref(ctx, parameter)) {
+    return handleIndirection(
+      ctx,
+      parameter,
+      "",
+      false,
+      operation,
+      expandParameterAsync,
+      inDoubleQuotes,
+    );
+  }
 
   // Handle subscript expansion for array access: ${a[...]}
   // We need to expand the subscript before calling getVariable
@@ -1173,6 +1224,7 @@ async function expandParameterAsync(
         operation,
         opCtx,
         expandWordPartsAsync,
+        assignParameterDefaultValue,
       );
 
     case "ErrorIfUnset":
