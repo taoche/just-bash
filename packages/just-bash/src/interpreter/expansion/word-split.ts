@@ -409,30 +409,39 @@ export async function smartWordSplit(
         ctx.limits.maxArrayElements,
       );
 
-      if (hadLeadingDelimiter && currentWord !== "") {
+      const flushedLeadingDelimiter = hadLeadingDelimiter && currentWord !== "";
+      if (flushedLeadingDelimiter) {
         pushSplitWord(ctx, words, currentWord);
         currentWord = "";
         hasProducedWord = true;
       }
 
+      const splitParts =
+        flushedLeadingDelimiter && parts[0] === "" ? parts.slice(1) : parts;
+
       // If the previous segment was a quoted empty and this splittable segment
       // has leading IFS delimiter, the quoted empty should anchor an empty word
-      if (prevWasQuotedEmpty && hadLeadingDelimiter && currentWord === "") {
+      if (
+        prevWasQuotedEmpty &&
+        hadLeadingDelimiter &&
+        !flushedLeadingDelimiter &&
+        currentWord === ""
+      ) {
         pushSplitWord(ctx, words, "");
         hasProducedWord = true;
       }
 
-      if (parts.length === 0) {
+      if (splitParts.length === 0) {
         // Empty expansion produces nothing - continue building current word
         // This happens for empty string or all-whitespace with default IFS
         // BUT if there was a trailing delimiter (e.g., "   "), mark pending word break
         if (hadTrailingDelimiter) {
           pendingWordBreak = true;
         }
-      } else if (parts.length === 1) {
+      } else if (splitParts.length === 1) {
         // Single result: just append to current word
         // Note: parts[0] might be empty string (e.g., IFS='_' and var='_' produces [""])
-        currentWord += parts[0];
+        currentWord += splitParts[0];
         hasProducedWord = true;
         // If there was a trailing delimiter, mark pending word break for next segment
         pendingWordBreak = hadTrailingDelimiter;
@@ -441,17 +450,17 @@ export async function smartWordSplit(
         // - First part joins with current word
         // - Middle parts become separate words
         // - Last part starts the new current word
-        currentWord += parts[0];
+        currentWord += splitParts[0];
         pushSplitWord(ctx, words, currentWord);
         hasProducedWord = true;
 
         // Add middle parts as separate words
-        for (let i = 1; i < parts.length - 1; i++) {
-          pushSplitWord(ctx, words, parts[i]);
+        for (let i = 1; i < splitParts.length - 1; i++) {
+          pushSplitWord(ctx, words, splitParts[i]);
         }
 
         // Last part becomes the new current word
-        currentWord = parts[parts.length - 1];
+        currentWord = splitParts[splitParts.length - 1];
         // If there was a trailing delimiter, mark pending word break for next segment
         pendingWordBreak = hadTrailingDelimiter;
       }

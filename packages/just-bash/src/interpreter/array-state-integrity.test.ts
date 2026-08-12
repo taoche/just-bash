@@ -93,6 +93,27 @@ describe("structured array state integrity", () => {
     });
   });
 
+  it("does not add an empty field after a flushed prefix", async () => {
+    const result = await new Bash().exec(`
+      values=('' x y)
+      set -- p""\${values[@]-fallback}
+      printf 'quoted-count=%s\n' "$#"
+      for value; do printf 'quoted=<%s>\n' "$value"; done
+      IFS=' :'
+      value=' :b'
+      set -- a$value
+      printf 'ifs-count=%s\n' "$#"
+      for value; do printf 'ifs=<%s>\n' "$value"; done
+    `);
+
+    expect(result).toMatchObject({
+      stdout:
+        "quoted-count=3\nquoted=<p>\nquoted=<x>\nquoted=<y>\nifs-count=2\nifs=<a>\nifs=<b>\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
   it.each([
     ["export", "readonly x=old; export x=new"],
     ["export -n", "readonly x=old; export -n x=new"],
