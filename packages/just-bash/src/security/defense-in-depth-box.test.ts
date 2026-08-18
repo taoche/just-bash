@@ -870,6 +870,27 @@ describeDefense("DefenseInDepthBox", () => {
     });
 
     describe("process.env blocking", () => {
+      it("should allow NODE_ENV reads required by host runtimes", async () => {
+        const box = DefenseInDepthBox.getInstance(true);
+        const handle = box.activate();
+
+        let nodeEnv: string | undefined;
+        let blockedError: Error | undefined;
+        await handle.run(async () => {
+          nodeEnv = process.env.NODE_ENV;
+          try {
+            const _home = process.env.HOME;
+          } catch (error) {
+            blockedError = error as Error;
+          }
+        });
+
+        handle.deactivate();
+
+        expect(nodeEnv).toBe(process.env.NODE_ENV);
+        expect(blockedError).toBeInstanceOf(SecurityViolationError);
+      });
+
       it("should block process.env access", async () => {
         const box = DefenseInDepthBox.getInstance(true);
         const handle = box.activate();

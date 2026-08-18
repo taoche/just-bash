@@ -127,6 +127,7 @@ export function getBlockedGlobals(): BlockedGlobal[] {
         "NODE_DEBUG",
         "NODE_DEBUG_NATIVE",
         "NODE_COMPILE_CACHE",
+        "NODE_ENV",
         "WATCH_REPORT_DEPENDENCIES",
         // Dependencies
         "FORCE_COLOR", // chalk/supports-color

@@ -44,6 +44,7 @@
  */
 
 import { type BlockedGlobal, getBlockedGlobals } from "./blocked-globals.js";
+import { getSafeTimestamp } from "./safe-timestamp.js";
 import type {
   DefenseInDepthConfig,
   SecurityViolation,
@@ -275,7 +276,7 @@ export class WorkerDefenseInDepth {
     message: string,
   ): SecurityViolation {
     const violation: SecurityViolation = {
-      timestamp: Date.now(),
+      timestamp: getSafeTimestamp(),
       type,
       message,
       path,

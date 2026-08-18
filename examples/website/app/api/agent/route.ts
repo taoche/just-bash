@@ -220,8 +220,18 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid request" }, { status });
   }
   try {
-    const overlayFs = new OverlayFs({ root: AGENT_DATA_DIR, readOnly: true });
-    const sandbox = new Bash({ fs: overlayFs, cwd: overlayFs.getMountPoint() });
+    const overlayFs = new OverlayFs({ root: AGENT_DATA_DIR });
+    const sandbox = new Bash({
+      fs: overlayFs,
+      cwd: overlayFs.getMountPoint(),
+      defenseInDepth: {
+        excludeViolationTypes: [
+          "error_prepare_stack_trace",
+          "performance_timing",
+          "weak_ref",
+        ],
+      },
+    });
     const bashToolkit = await createBashTool({
       sandbox,
       destination: overlayFs.getMountPoint(),

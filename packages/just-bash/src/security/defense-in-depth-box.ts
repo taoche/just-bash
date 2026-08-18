@@ -33,6 +33,7 @@
 import * as nodeAsyncHooks from "node:async_hooks";
 import * as nodeModule from "node:module";
 import { type BlockedGlobal, getBlockedGlobals } from "./blocked-globals.js";
+import { getSafeTimestamp } from "./safe-timestamp.js";
 import type {
   DefenseInDepthConfig,
   DefenseInDepthHandle,
@@ -812,7 +813,7 @@ export class DefenseInDepthBox {
     message: string,
   ): SecurityViolation {
     const violation: SecurityViolation = {
-      timestamp: Date.now(),
+      timestamp: getSafeTimestamp(),
       type,
       message,
       path,
@@ -1072,6 +1073,9 @@ export class DefenseInDepthBox {
   private applyPatches(): void {
     this.patchFailures = [];
     const blockedGlobals = getBlockedGlobals();
+    const excludedViolationTypes = new Set(
+      this.config.excludeViolationTypes ?? [],
+    );
 
     // IPC-related globals (process.send, process.channel, process.connected)
     // are only blocked in worker contexts (WorkerDefenseInDepth). In the main
@@ -1092,6 +1096,7 @@ export class DefenseInDepthBox {
     const permanentIntrinsicPatches: BlockedGlobal[] = [];
 
     for (const blocked of blockedGlobals) {
+      if (excludedViolationTypes.has(blocked.violationType)) continue;
       if (skipInMainThread.has(blocked.violationType)) continue;
       if (blocked.strategy === "freeze") {
         permanentIntrinsicPatches.push(blocked);
@@ -1105,7 +1110,9 @@ export class DefenseInDepthBox {
     this.protectConstructorChain();
 
     // Protect Error.prepareStackTrace (only block setting, not reading)
-    this.protectErrorPrepareStackTrace();
+    if (!excludedViolationTypes.has("error_prepare_stack_trace")) {
+      this.protectErrorPrepareStackTrace();
+    }
 
     // Wrap Promise.then callbacks created in sandbox context so deferred
     // callbacks cannot outlive handle deactivation.
