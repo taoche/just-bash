@@ -487,6 +487,7 @@ describeDefense("Defense-in-Depth Hardening", () => {
 
       handle.deactivate();
       expect(error).toBeInstanceOf(SecurityViolationError);
+      expect(error?.message).not.toContain("excludeViolationTypes");
     });
 
     it("should block Set.constructor.constructor", async () => {

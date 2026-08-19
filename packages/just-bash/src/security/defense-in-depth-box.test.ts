@@ -89,6 +89,14 @@ describeDefense("DefenseInDepthBox", () => {
       expect(instance1).toBe(instance2);
     });
 
+    it("should reject non-excludable constructor protections", () => {
+      expect(() =>
+        DefenseInDepthBox.getInstance({
+          excludeViolationTypes: ["function_constructor"],
+        }),
+      ).toThrow(/non-excludable "function_constructor" protection/);
+    });
+
     it("should reject conflicting exclusions and callbacks", () => {
       const callback = () => {};
       DefenseInDepthBox.getInstance({

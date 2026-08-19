@@ -46,7 +46,10 @@ import type {
   SecurityViolation,
   SecurityViolationType,
 } from "./types.js";
-import { formatViolationErrorMessage } from "./violation-error-message.js";
+import {
+  assertExcludableViolationTypes,
+  formatViolationErrorMessage,
+} from "./violation-error-message.js";
 
 /**
  * Whether we're running in a browser environment.
@@ -204,6 +207,7 @@ function resolveConfig(
 ): ResolvedDefenseConfig {
   const supplied =
     typeof config === "boolean" ? { enabled: config } : (config ?? {});
+  assertExcludableViolationTypes(supplied.excludeViolationTypes);
   if (
     supplied.enabled !== undefined &&
     supplied.enabled !== true &&

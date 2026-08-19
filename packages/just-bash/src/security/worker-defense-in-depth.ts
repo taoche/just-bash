@@ -54,7 +54,10 @@ import type {
   SecurityViolation,
   SecurityViolationType,
 } from "./types.js";
-import { formatViolationErrorMessage } from "./violation-error-message.js";
+import {
+  assertExcludableViolationTypes,
+  formatViolationErrorMessage,
+} from "./violation-error-message.js";
 
 const WORKER_SPECIAL_EXCLUDABLE_VIOLATION_TYPES =
   new Set<SecurityViolationType>([
@@ -191,6 +194,8 @@ export class WorkerDefenseInDepth {
    * @param config - Configuration for the defense layer
    */
   constructor(config: DefenseInDepthConfig) {
+    assertExcludableViolationTypes(config.excludeViolationTypes);
+
     // Capture original Proxy BEFORE any patching occurs
     // This ensures we can create blocking proxies even after patching
     this.originalProxy = Proxy;
