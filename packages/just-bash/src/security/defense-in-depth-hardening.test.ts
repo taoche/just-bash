@@ -875,6 +875,9 @@ describeDefense("Defense-in-Depth Hardening", () => {
 
         expect(error).toBeInstanceOf(SecurityViolationError);
         expect(error?.message).toContain("performance");
+        expect(error?.message).toContain(
+          'add "performance_timing" to defenseInDepth.excludeViolationTypes',
+        );
       } finally {
         handle.deactivate();
         Date.now = originalDateNow;

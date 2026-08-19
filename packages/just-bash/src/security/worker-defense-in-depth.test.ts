@@ -88,6 +88,9 @@ describe("WorkerDefenseInDepth", () => {
 
         defense.deactivate();
         expect(error).toBeInstanceOf(WorkerSecurityViolationError);
+        expect(error?.message).toContain(
+          'add "function_constructor" to defenseInDepth.excludeViolationTypes',
+        );
       });
 
       it("should block Function() call without new", () => {

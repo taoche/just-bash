@@ -32,7 +32,11 @@
 
 import * as nodeAsyncHooks from "node:async_hooks";
 import * as nodeModule from "node:module";
-import { type BlockedGlobal, getBlockedGlobals } from "./blocked-globals.js";
+import {
+  type BlockedGlobal,
+  getBlockedGlobals,
+  getBlockedGlobalViolationTypes,
+} from "./blocked-globals.js";
 import { getSafeTimestamp } from "./safe-timestamp.js";
 import type {
   DefenseInDepthConfig,
@@ -42,6 +46,7 @@ import type {
   SecurityViolation,
   SecurityViolationType,
 } from "./types.js";
+import { formatViolationErrorMessage } from "./violation-error-message.js";
 
 /**
  * Whether we're running in a browser environment.
@@ -111,13 +116,6 @@ if (!IS_BROWSER) {
 }
 
 /**
- * Suffix added to all security violation messages.
- */
-const DEFENSE_IN_DEPTH_NOTICE =
-  "\n\nThis is a defense-in-depth measure and indicates a bug in just-bash. " +
-  "Please report this at security@vercel.com";
-
-/**
  * Error thrown when a security violation is detected and blocking is enabled.
  */
 export class SecurityViolationError extends Error {
@@ -125,7 +123,14 @@ export class SecurityViolationError extends Error {
     message: string,
     public readonly violation: SecurityViolation,
   ) {
-    super(message + DEFENSE_IN_DEPTH_NOTICE);
+    super(
+      formatViolationErrorMessage(
+        message,
+        violation.type,
+        violation.type === "error_prepare_stack_trace" ||
+          getBlockedGlobalViolationTypes().has(violation.type),
+      ),
+    );
     this.name = "SecurityViolationError";
   }
 }
