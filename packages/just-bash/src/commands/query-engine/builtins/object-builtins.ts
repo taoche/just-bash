@@ -23,7 +23,10 @@ function maxResultElements(ctx: EvalContext): number {
   return ctx.limits.maxArrayElements;
 }
 
-function makeEntry(key: string | number, value: unknown): Record<string, unknown> {
+function makeEntry(
+  key: string | number,
+  value: unknown,
+): Record<string, unknown> {
   const entry: Record<string, unknown> = Object.create(null);
   safeSet(entry, "key", key);
   safeSet(entry, "value", value);
