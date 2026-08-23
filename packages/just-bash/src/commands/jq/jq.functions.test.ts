@@ -217,7 +217,7 @@ describe("jq builtin functions", () => {
       expect(result.exitCode).toBe(0);
     });
 
-    it("should iterate array entries", async () => {
+    it("should support to_entries[] iteration over an array", async () => {
       const env = new Bash();
       const result = await env.exec(
         "echo '[10,20]' | jq -c '[to_entries[] | .key]'",

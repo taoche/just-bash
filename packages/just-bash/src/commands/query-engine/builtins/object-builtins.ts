@@ -23,6 +23,13 @@ function maxResultElements(ctx: EvalContext): number {
   return ctx.limits.maxArrayElements;
 }
 
+function makeEntry(key: string | number, value: unknown): Record<string, unknown> {
+  const entry: Record<string, unknown> = Object.create(null);
+  safeSet(entry, "key", key);
+  safeSet(entry, "value", value);
+  return entry;
+}
+
 function assertResultPush(ctx: EvalContext, length: number): void {
   const limit = maxResultElements(ctx);
   if (length >= limit) {
@@ -126,14 +133,7 @@ export function evalObjectBuiltin(
             "array_elements",
           );
         }
-        return [
-          value.map((item, index) => {
-            const entry: Record<string, unknown> = Object.create(null);
-            safeSet(entry, "key", index);
-            safeSet(entry, "value", item);
-            return entry;
-          }),
-        ];
+        return [value.map((item, index) => makeEntry(index, item))];
       }
       const toEntriesObj = asQueryRecord(value);
       if (toEntriesObj) {
@@ -144,14 +144,7 @@ export function evalObjectBuiltin(
             "array_elements",
           );
         }
-        return [
-          keys.map((key) => {
-            const entry: Record<string, unknown> = Object.create(null);
-            safeSet(entry, "key", key);
-            safeSet(entry, "value", toEntriesObj[key]);
-            return entry;
-          }),
-        ];
+        return [keys.map((key) => makeEntry(key, toEntriesObj[key]))];
       }
       return [null];
     }
@@ -192,9 +185,7 @@ export function evalObjectBuiltin(
         }
         const mapped: QueryValue[] = [];
         for (const key of keys) {
-          const entry: Record<string, unknown> = Object.create(null);
-          safeSet(entry, "key", key);
-          safeSet(entry, "value", withEntriesObj[key]);
+          const entry = makeEntry(key, withEntriesObj[key]);
           const values = evaluate(entry, args[0], ctx);
           if (mapped.length > maxResultElements(ctx) - values.length) {
             throw new ExecutionLimitError(
