@@ -127,8 +127,6 @@ export function evalObjectBuiltin(
     }
 
     case "to_entries": {
-      // jq: to_entries is keys_unsorted-based, so arrays yield numeric keys
-      // (matching the array support in "keys" above).
       if (Array.isArray(value)) {
         if (value.length > maxResultElements(ctx)) {
           throw new ExecutionLimitError(
@@ -300,7 +298,6 @@ export function evalObjectBuiltin(
     case "tonumber":
       if (typeof value === "number") return [value];
       if (typeof value === "string") {
-        // Number("") and Number("  ") are 0, but jq rejects them.
         const n = value.trim() === "" ? Number.NaN : Number(value);
         if (Number.isNaN(n)) {
           throw new Error(
