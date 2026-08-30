@@ -1,10 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Bash } from "../../Bash.js";
-import { DefenseInDepthBox } from "../../security/defense-in-depth-box.js";
+import { defineCommand } from "../../custom-commands.js";
+import {
+  DefenseInDepthBox,
+  SecurityViolationError,
+} from "../../security/defense-in-depth-box.js";
 import { InMemoryFs } from "./in-memory-fs.js";
 
 describe("lazy provider under defense-in-depth (#253)", () => {
-  afterEach(() => DefenseInDepthBox.resetInstance());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    DefenseInDepthBox.resetInstance();
+  });
 
   it("materializes a provider that settles on a macrotask during exec", async () => {
     const bash = new Bash({
@@ -25,39 +32,51 @@ describe("lazy provider under defense-in-depth (#253)", () => {
   });
 
   it("materializes a provider that reads process.env during exec", async () => {
-    process.env.JUST_BASH_LAZY_TEST = "FROM_ENV";
-    try {
-      const bash = new Bash({
-        defenseInDepth: true,
-        files: {
-          "/env.md": async () => {
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            return process.env.JUST_BASH_LAZY_TEST ?? "";
-          },
-        },
-      });
+    vi.stubEnv("JUST_BASH_LAZY_TEST", "FROM_ENV");
+    const bash = new Bash({
+      defenseInDepth: true,
+      files: {
+        "/env.md": async () => process.env.JUST_BASH_LAZY_TEST ?? "",
+      },
+    });
 
-      const result = await bash.exec("cat /env.md");
+    const result = await bash.exec("cat /env.md");
 
-      expect(result.stderr).toBe("");
-      expect(result.stdout).toBe("FROM_ENV");
-    } finally {
-      delete process.env.JUST_BASH_LAZY_TEST;
-    }
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("FROM_ENV");
   });
 
-  it("does not leave the trusted scope active after materialization", async () => {
+  it("keeps untrusted command execution blocked after materialization", async () => {
+    const probe = defineCommand(
+      "probe",
+      async () => {
+        try {
+          new Function("return 1");
+          return { stdout: "unblocked\n", stderr: "", exitCode: 0 };
+        } catch (error) {
+          if (error instanceof SecurityViolationError) {
+            return { stdout: "blocked\n", stderr: "", exitCode: 0 };
+          }
+          throw error;
+        }
+      },
+      { trusted: false },
+    );
     const fs = new InMemoryFs();
     fs.writeFileLazy("/late.md", async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       return "LATE";
     });
-    const bash = new Bash({ defenseInDepth: true, fs });
+    const bash = new Bash({
+      defenseInDepth: true,
+      fs,
+      customCommands: [probe],
+    });
 
-    const first = await bash.exec("cat /late.md");
-    expect(first.stdout).toBe("LATE");
+    const result = await bash.exec("cat /late.md && probe");
 
-    const box = DefenseInDepthBox.getInstance(true);
-    expect(box.getStats().refCount).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("LATEblocked\n");
+    expect(result.exitCode).toBe(0);
   });
 });
