@@ -508,6 +508,7 @@ export const grepCommand: RuntimeCommand = {
         maxWork: getMatcherWorkLimit(ctx),
         maxMatches: ctx.limits.maxArrayElements,
         signal: ctx.signal,
+        budget: ctx.executionScope,
       });
       if (quietMode) {
         return { stdout: "", stderr: "", exitCode: result.matched ? 0 : 1 };
@@ -736,6 +737,7 @@ export const grepCommand: RuntimeCommand = {
               maxWork: getMatcherWorkLimit(ctx),
               maxMatches: ctx.limits.maxArrayElements,
               signal: ctx.signal,
+              budget: ctx.executionScope,
             });
 
             return { file, result };

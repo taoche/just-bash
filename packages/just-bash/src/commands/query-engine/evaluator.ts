@@ -6,6 +6,10 @@
  */
 
 import { BoundedStringBuilder } from "../../bounded-builder.js";
+import {
+  type CommandExecutionBudget,
+  DEADLINE_CHECK_STRIDE,
+} from "../../execution-scope.js";
 import { mapToRecord } from "../../helpers/env.js";
 import { ExecutionLimitError } from "../../interpreter/errors.js";
 import { assertDefenseContext } from "../../security/defense-context.js";
@@ -141,11 +145,15 @@ export interface EvalContext {
   coverage?: FeatureCoverageWriter;
   /** Shared across every recursive evaluation and builtin invocation. */
   budget: QueryEvaluationBudget;
+  /** Shared accounting; supplies the wall-clock deadline during evaluation. */
+  executionScope?: CommandExecutionBudget;
 }
 
 export interface QueryEvaluationBudget {
   operations: number;
   callDepth: number;
+  /** Operation count at which the next deadline check is due. */
+  deadlineCheckAt: number;
 }
 
 function queryLimitError(
@@ -156,6 +164,10 @@ function queryLimitError(
 }
 
 export function chargeQueryWork(ctx: EvalContext, count = 1): void {
+  if (ctx.budget.operations >= ctx.budget.deadlineCheckAt) {
+    ctx.budget.deadlineCheckAt = ctx.budget.operations + DEADLINE_CHECK_STRIDE;
+    ctx.executionScope?.throwIfAborted("query evaluation");
+  }
   if (
     !Number.isSafeInteger(count) ||
     count < 0 ||
@@ -238,7 +250,12 @@ function createContext(options?: EvaluateOptions): EvalContext {
     coverage: options?.coverage,
     requireDefenseContext: options?.requireDefenseContext,
     defenseContextChecked: false,
-    budget: options?.budget ?? { operations: 0, callDepth: 0 },
+    budget: options?.budget ?? {
+      operations: 0,
+      callDepth: 0,
+      deadlineCheckAt: 0,
+    },
+    executionScope: options?.executionScope,
   };
 }
 
@@ -263,6 +280,7 @@ function withVar(
     labels: ctx.labels,
     coverage: ctx.coverage,
     budget: ctx.budget,
+    executionScope: ctx.executionScope,
   };
 }
 
@@ -466,6 +484,7 @@ export interface EvaluateOptions {
   requireDefenseContext?: boolean;
   /** Reuse across multiple input documents to enforce one command budget. */
   budget?: QueryEvaluationBudget;
+  executionScope?: CommandExecutionBudget;
 }
 
 /**

@@ -361,7 +361,7 @@ export const yqCommand: RuntimeCommand = {
         env: ctx.env,
         coverage: ctx.coverage,
         requireDefenseContext: ctx.requireDefenseContext,
-        budget: { operations: 0, callDepth: 0 },
+        budget: { operations: 0, callDepth: 0, deadlineCheckAt: 0 },
       };
       const dataLimits = {
         maxDepth: ctx.limits.maxQueryDepth,
