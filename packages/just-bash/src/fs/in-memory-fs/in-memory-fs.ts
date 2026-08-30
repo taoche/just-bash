@@ -303,8 +303,8 @@ export class InMemoryFs implements IFileSystem {
     path: string,
     entry: LazyFileEntry,
   ): Promise<FileEntry> {
-    // Lazy providers are host-supplied; run them in the trusted scope so
-    // real async I/O doesn't trip the sandbox blocked-globals traps.
+    // Providers are host-supplied code; without the trusted scope, real
+    // async I/O would trip the sandbox blocked-globals traps.
     const content = await DefenseInDepthBox.runTrustedAsync(async () =>
       entry.lazy(),
     );
