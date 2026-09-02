@@ -10,6 +10,7 @@ import {
   type CommandExecutionBudget,
   DEADLINE_CHECK_STRIDE,
 } from "../../execution-scope.js";
+import { rethrowFatalExecutionError } from "../../fatal-execution-error.js";
 import { mapToRecord } from "../../helpers/env.js";
 import { ExecutionLimitError } from "../../interpreter/errors.js";
 import { assertDefenseContext } from "../../security/defense-context.js";
@@ -503,8 +504,7 @@ function evaluateWithPartialResults(
       const left = evaluate(value, ast.left, ctx);
       appendQueryResults(ctx, results, left);
     } catch (e) {
-      // Always re-throw execution limit errors - they must not be suppressed
-      if (e instanceof ExecutionLimitError) throw e;
+      rethrowFatalExecutionError(e);
       // Left side errored, check if we have any results
       if (results.length > 0) return results;
       throw new Error("evaluation failed");
@@ -513,8 +513,7 @@ function evaluateWithPartialResults(
       const right = evaluate(value, ast.right, ctx);
       appendQueryResults(ctx, results, right);
     } catch (e) {
-      // Always re-throw execution limit errors
-      if (e instanceof ExecutionLimitError) throw e;
+      rethrowFatalExecutionError(e);
       // Right side errored, return what we have from left
       return results;
     }
@@ -818,7 +817,7 @@ function evaluateNode(
       try {
         return evaluate(value, ast.body, ctx);
       } catch (e) {
-        if (e instanceof ExecutionLimitError) throw e;
+        rethrowFatalExecutionError(e);
         if (ast.catch) {
           // jq: In catch handler, input is the error value (preserved if JqError)
           const errorVal =
@@ -952,7 +951,7 @@ function evaluateNode(
       try {
         return evaluate(value, ast.expr, ctx);
       } catch (error) {
-        if (error instanceof ExecutionLimitError) throw error;
+        rethrowFatalExecutionError(error);
         return [];
       }
     }

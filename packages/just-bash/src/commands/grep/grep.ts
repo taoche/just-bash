@@ -705,6 +705,7 @@ export const grepCommand: RuntimeCommand = {
                 ? content.toLowerCase()
                 : content;
               if (!preFilter.needles.some((n) => haystack.includes(n))) {
+                ctx.executionScope?.throwIfAborted("grep");
                 if (countOnly) {
                   const countStr = showFilename ? `${file}:0` : "0";
                   return {
