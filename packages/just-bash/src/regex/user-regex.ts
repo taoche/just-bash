@@ -77,27 +77,20 @@ function translatePattern(pattern: string): string {
   return RE2JS.translateRegExp(pattern);
 }
 
-// Compiling a pattern (translate -> parse -> simplify -> compile) costs ~23us,
-// while matching with an already-compiled pattern costs ~1.5us. Callers build a
-// UserRegex per operation -- jq's test/gsub and awk's `~` run once per row -- so
-// without this the same source pattern is recompiled once per row.
-//
-// Only the compiled RE2JS is shared. It derives purely from (pattern, flags) and
-// UserRegex only reads from it (groupCount/namedGroups/matcher); all per-call
-// state (lastIndex, the reusable Matcher, result limits, AbortSignal) stays on
-// the UserRegex instance, which is still constructed per call.
-//
-// 256 entries with insertion-order eviction, mirroring the glob regex cache in
-// src/utils/glob.ts. The cap sits far below that cache's 2048 because a cached
-// RE2JS also retains a lazy-DFA state cache that grows as it matches (re2js
-// bounds it at 10k states), whereas a glob pattern compiles to a tiny program.
+// Only the immutable compiled RE2JS is shared; per-call state (lastIndex, the
+// reusable Matcher, result limits, AbortSignal) stays on each UserRegex.
+// Keyed on the numeric RE2 flags because `g` and `d` are handled by UserRegex.
+// Patterns are user-controlled and unbounded in length, so oversized ones are
+// compiled but not retained — the cache holds at most 256 KiB of pattern source.
 const COMPILED_CACHE_MAX = 256;
+const COMPILED_CACHE_MAX_PATTERN_LENGTH = 1024;
 const compiledCache = new Map<string, RE2JS>();
 
 function compilePattern(pattern: string, flags: string): RE2JS {
   const re2Flags = convertFlags(flags);
-  // Keyed on the numeric RE2 flags rather than the flag string: `g` and `d` are
-  // handled by UserRegex, so test("a") and match("a") share one compiled pattern.
+  if (pattern.length > COMPILED_CACHE_MAX_PATTERN_LENGTH) {
+    return RE2JS.compile(translatePattern(pattern), re2Flags);
+  }
   const key = `${re2Flags} ${pattern}`;
   const cached = compiledCache.get(key);
   if (cached !== undefined) {

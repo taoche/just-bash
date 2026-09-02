@@ -110,6 +110,25 @@ describe("compiled pattern cache", () => {
     expect(original.test("EVICTED-BETA")).toBe(true);
   });
 
+  it("does not retain patterns longer than 1024 characters", () => {
+    const oversized = `${"a".repeat(1025)}|needle`;
+    const first = createUserRegex(oversized);
+    const second = createUserRegex(oversized);
+    expect(compiledOf(second)).not.toBe(compiledOf(first));
+    expect(first.test("needle")).toBe(true);
+    expect(second.test("needle")).toBe(true);
+    expect(second.test("haystack")).toBe(false);
+  });
+
+  it("still retains a pattern of exactly 1024 characters", () => {
+    const boundary = `${"a".repeat(1017)}|needle`;
+    expect(boundary.length).toBe(1024);
+    const first = createUserRegex(boundary);
+    const second = createUserRegex(boundary);
+    expect(compiledOf(second)).toBe(compiledOf(first));
+    expect(second.test("needle")).toBe(true);
+  });
+
   it("throws on every construction of an invalid pattern", () => {
     for (let i = 0; i < 3; i++) {
       expect(() => createUserRegex("[")).toThrow(/Invalid regular expression/);
