@@ -26,7 +26,10 @@ function convertFlags(flags: RegexEngineFlags): number {
 }
 
 class Re2jsMatcherAdapter implements RegexMatcher {
-  constructor(private readonly matcher: Re2jsMatcher) {}
+  constructor(
+    private readonly re2: RE2JS,
+    private readonly matcher: Re2jsMatcher,
+  ) {}
 
   find(start?: number): boolean {
     return this.matcher.find(start);
@@ -40,8 +43,28 @@ class Re2jsMatcherAdapter implements RegexMatcher {
     return this.matcher.end(group);
   }
 
-  group(index?: number): string | null {
+  group(index = 0): string | null {
+    if (index > this.re2.groupCount()) {
+      return null;
+    }
     return this.matcher.group(index);
+  }
+
+  groups(): (string | null)[] {
+    const count = this.re2.groupCount();
+    const groups = new Array<string | null>(count + 1);
+    for (let i = 0; i <= count; i++) {
+      groups[i] = this.matcher.group(i);
+    }
+    return groups;
+  }
+
+  namedGroups(): Record<string, string | null> {
+    const named: Record<string, string | null> = Object.create(null);
+    for (const [name, index] of Object.entries(this.re2.namedGroups())) {
+      named[name] = this.matcher.group(index);
+    }
+    return named;
   }
 
   reset(input: string): void {
@@ -56,16 +79,8 @@ class Re2jsMatcherAdapter implements RegexMatcher {
 class Re2jsCompiledRegex implements CompiledRegex {
   constructor(private readonly re2: RE2JS) {}
 
-  groupCount(): number {
-    return this.re2.groupCount();
-  }
-
-  namedGroups(): Record<string, number> {
-    return this.re2.namedGroups();
-  }
-
   matcher(input: string): RegexMatcher {
-    return new Re2jsMatcherAdapter(this.re2.matcher(input));
+    return new Re2jsMatcherAdapter(this.re2, this.re2.matcher(input));
   }
 }
 

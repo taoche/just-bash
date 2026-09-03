@@ -108,8 +108,10 @@ export class UserRegex implements RegexLike {
       this.maxOutputBytes,
       "regular expression replacement",
     );
-    const groupCount = this._compiled.groupCount();
-    const namedGroups = this._compiled.namedGroups();
+    // Resolved on first use: most replacements are literal and the string
+    // `s///g` path runs this once per match.
+    let groups: (string | null)[] | undefined;
+    let namedGroups: Record<string, string | null> | undefined;
     for (let index = 0; index < replacement.length; index++) {
       const char = replacement[index];
       if (char === "\\" && index + 1 < replacement.length) {
@@ -124,15 +126,17 @@ export class UserRegex implements RegexLike {
         const end = replacement.indexOf("}", index + 2);
         if (end !== -1) {
           const name = replacement.slice(index + 2, end);
-          const groupIndex = namedGroups?.[name];
-          if (groupIndex !== undefined) {
-            output.append(matcher.group(groupIndex) ?? "");
+          namedGroups ??= matcher.namedGroups();
+          if (name in namedGroups) {
+            output.append(namedGroups[name] ?? "");
             index = end;
             continue;
           }
         }
       }
       if (/\d/.test(replacement[index + 1])) {
+        groups ??= matcher.groups();
+        const groupCount = groups.length - 1;
         let end = index + 1;
         let group = 0;
         while (end < replacement.length && /\d/.test(replacement[end])) {
@@ -141,7 +145,7 @@ export class UserRegex implements RegexLike {
           group = candidate;
           end++;
         }
-        output.append(matcher.group(group) ?? "");
+        output.append(groups[group] ?? "");
         index = end - 1;
         continue;
       }
@@ -151,12 +155,7 @@ export class UserRegex implements RegexLike {
   }
 
   private captureGroups(matcher: RegexMatcher): string[] {
-    const groupCount = this._compiled.groupCount();
-    const groups: string[] = [];
-    for (let i = 1; i <= groupCount; i++) {
-      groups.push(matcher.group(i) as string);
-    }
-    return groups;
+    return matcher.groups().slice(1) as string[];
   }
 
   // Null-prototype so a group named __proto__ cannot pollute the result.
@@ -165,13 +164,13 @@ export class UserRegex implements RegexLike {
     matcher: RegexMatcher,
     missing: string | null,
   ): Record<string, string> | undefined {
-    const entries = Object.entries(this._compiled.namedGroups());
+    const entries = Object.entries(matcher.namedGroups());
     if (entries.length === 0) {
       return undefined;
     }
     const groups: Record<string, string> = Object.create(null);
-    for (const [name, index] of entries) {
-      const value = matcher.group(index) ?? missing;
+    for (const [name, text] of entries) {
+      const value = text ?? missing;
       if (value !== null) {
         groups[name] = value;
       }
@@ -571,8 +570,11 @@ export class UserRegex implements RegexLike {
 
 /**
  * Create a UserRegex from a pattern string and flags.
- * This is the primary entry point for user-provided regex patterns.
- * Uses RE2 for ReDoS protection.
+ * This is the primary entry point for user-provided regex patterns. The
+ * pattern is compiled by the engine of the `Bash` execution this is called
+ * from (`BashOptions.regexEngine`); outside any execution, or in the browser
+ * build, that is re2js. Either way the engine matches in linear time, which is
+ * the ReDoS protection.
  *
  * @param pattern - The regex pattern string
  * @param flags - Optional regex flags (g, i, m, s, u)

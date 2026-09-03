@@ -45,6 +45,18 @@ class HostRegExpMatcher implements RegexMatcher {
     return this.match?.[index] ?? null;
   }
 
+  groups(): (string | null)[] {
+    return this.match ? [...this.match].map((g) => g ?? null) : [];
+  }
+
+  namedGroups(): Record<string, string | null> {
+    const named: Record<string, string | null> = Object.create(null);
+    for (const [name, value] of Object.entries(this.match?.groups ?? {})) {
+      named[name] = value ?? null;
+    }
+    return named;
+  }
+
   reset(input: string): void {
     this.input = input;
     this.match = null;
@@ -71,22 +83,7 @@ const hostRegExpEngine: RegexEngine = {
     } catch (e) {
       throw new RegexSyntaxError((e as Error).message);
     }
-    const groupCount = (new RegExp(`${pattern}|`).exec("")?.length ?? 1) - 1;
-    const names = [...pattern.matchAll(/\(\?<([A-Za-z_$][\w$]*)>/g)].map(
-      (m) => m[1],
-    );
-    const namedGroups: Record<string, number> = {};
-    // Named groups are numbered in order of their opening parenthesis; this
-    // reference adapter only supports patterns whose groups are all named or
-    // all unnamed, which is what the tests below use.
-    names.forEach((name, i) => {
-      namedGroups[name as string] = i + 1;
-    });
-    return {
-      groupCount: () => groupCount,
-      namedGroups: () => namedGroups,
-      matcher: (input) => new HostRegExpMatcher(regex, input),
-    };
+    return { matcher: (input) => new HostRegExpMatcher(regex, input) };
   },
 };
 

@@ -21,25 +21,44 @@ export interface RegexEngineFlags {
 }
 
 /**
- * Cursor over one input string. Modelled on RE2JS's Matcher so the default
- * adapter is a thin wrapper and the higher-level operations in UserRegex stay
- * engine-agnostic.
+ * Cursor over one input string. A cursor rather than an allocated match object
+ * because UserRegex drives many matches per line (`s///g`, `gsub`) and the
+ * default engine can serve them allocation-free; the accessors below are only
+ * meaningful after a `find` that returned true, and UserRegex never calls them
+ * otherwise.
  */
 export interface RegexMatcher {
-  /** Search from `start` (default 0). On success, start/end/group describe the match. */
+  /**
+   * Search for the next match at or after `start` (default 0). Returns false —
+   * and leaves the cursor without a current match — when there is none or when
+   * `start` is past the end of the input.
+   */
   find(start?: number): boolean;
+  /** Start offset of the current match (`group` 0) or of a capture group. */
   start(group?: number): number;
+  /** End offset (exclusive) of the current match or of a capture group. */
   end(group?: number): number;
-  /** Text of a capture group; null when the group did not participate. */
+  /**
+   * Text of the current match (`index` 0) or of a capture group; null when the
+   * group did not participate or `index` exceeds the pattern's group count.
+   */
   group(index?: number): string | null;
+  /**
+   * Every group of the current match: `[0]` is the whole match, then one entry
+   * per capture group in pattern order, null for non-participating groups.
+   * Allocates, so UserRegex calls it only where it builds a result array.
+   */
+  groups(): (string | null)[];
+  /**
+   * Named groups of the current match, name → text (null when the group did
+   * not participate). Empty when the pattern has no named groups.
+   */
+  namedGroups(): Record<string, string | null>;
   /** Point at a new input and rewind, reusing this matcher's allocations. */
   reset(input: string): void;
 }
 
 export interface CompiledRegex {
-  groupCount(): number;
-  /** Capture group name → index. Empty when the pattern has no named groups. */
-  namedGroups(): Record<string, number>;
   matcher(input: string): RegexMatcher;
 }
 

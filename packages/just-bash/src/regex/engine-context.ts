@@ -37,8 +37,13 @@ export function runWithRegexEngine<R>(
   engine: RegexEngine | undefined,
   fn: () => R,
 ): R {
-  if (!engine || !engineStorage) {
+  if (!engine) {
     return fn();
+  }
+  if (!engineStorage) {
+    throw new Error(
+      "regexEngine requires AsyncLocalStorage, which this runtime does not provide",
+    );
   }
   return engineStorage.run(engine, fn);
 }
