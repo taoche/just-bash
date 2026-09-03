@@ -2,15 +2,22 @@
  * UserRegex - Centralized regex handling for user-provided patterns
  *
  * This module provides a single point of control for all user-provided regex
- * execution. Uses RE2JS for ReDoS protection via linear-time matching.
+ * execution. Matching goes through the installed RegexEngine (re2js by
+ * default) for ReDoS protection via linear-time matching.
  *
  * All user-provided regex patterns should go through this module.
  * Internal patterns (those we control) can use ConstantRegex for the same interface.
  */
 
-import { RE2JS, RE2JSSyntaxException } from "re2js";
 import { BoundedStringBuilder } from "../bounded-builder.js";
 import { ExecutionLimitError } from "../interpreter/errors.js";
+import {
+  type CompiledRegex,
+  type RegexEngine,
+  type RegexMatcher,
+  RegexSyntaxError,
+} from "./engine.js";
+import { re2jsEngine } from "./re2js-engine.js";
 
 const DEFAULT_MAX_REGEX_RESULTS = 1_000_000;
 const DEFAULT_MAX_REGEX_OUTPUT_BYTES = 64 * 1024 * 1024;
@@ -51,38 +58,29 @@ export interface RegexLike {
   lastIndex: number;
 }
 
+let engine: RegexEngine = re2jsEngine;
+
 /**
- * Convert string flags to RE2JS numeric flags.
- * RE2 doesn't support the 'g' flag - we handle global matching manually.
+ * Install the engine every UserRegex compiles and matches through, process-wide.
+ * Returns the previously installed engine. The engine must guarantee
+ * linear-time matching; see RegexEngine.
  */
-function convertFlags(flags: string): number {
-  let re2Flags = 0;
-  if (flags.includes("i")) {
-    re2Flags |= RE2JS.CASE_INSENSITIVE;
-  }
-  if (flags.includes("m")) {
-    re2Flags |= RE2JS.MULTILINE;
-  }
-  if (flags.includes("s")) {
-    re2Flags |= RE2JS.DOTALL;
-  }
-  return re2Flags;
+export function setRegexEngine(next: RegexEngine): RegexEngine {
+  const previous = engine;
+  engine = next;
+  return previous;
+}
+
+export function getRegexEngine(): RegexEngine {
+  return engine;
 }
 
 /**
- * Translate a JavaScript regex pattern to RE2-compatible syntax.
- * Uses RE2JS.translateRegExp to handle syntax differences.
- */
-function translatePattern(pattern: string): string {
-  return RE2JS.translateRegExp(pattern);
-}
-
-/**
- * A wrapper around RE2JS that provides a RegExp-compatible interface.
- * Uses RE2 for linear-time matching, providing ReDoS protection.
+ * A wrapper around the installed RegexEngine that provides a RegExp-compatible
+ * interface. The engine guarantees linear-time matching, providing ReDoS protection.
  */
 export class UserRegex implements RegexLike {
-  private readonly _re2: RE2JS;
+  private readonly _re2: CompiledRegex;
   private readonly _pattern: string;
   private readonly _flags: string;
   private readonly _global: boolean;
@@ -91,12 +89,10 @@ export class UserRegex implements RegexLike {
   private _lastIndex = 0;
   // Cache native RegExp for compatibility - created lazily
   private _nativeRegex: RegExp | null = null;
-  // Reusable RE2 Matcher to avoid per-call allocation in tight grep loops.
+  // Reusable matcher to avoid per-call allocation in tight grep loops.
   // Matcher allocation dominates regex.test/exec cost when called once per line
-  // across thousands of lines. We mutate charSequence in-place (not resetMatcherInput,
-  // which is broken in re2js 1.2.1 — see acquireMatcher).
-  private _matcher: ReturnType<RE2JS["matcher"]> | null = null;
-  private _matcherInput: string | null = null;
+  // across thousands of lines.
+  private _matcher: RegexMatcher | null = null;
   private readonly maxResults: number;
   private readonly maxOutputBytes: number;
   private readonly signal?: AbortSignal;
@@ -112,7 +108,7 @@ export class UserRegex implements RegexLike {
   }
 
   private expandReplacement(
-    matcher: ReturnType<RE2JS["matcher"]>,
+    matcher: RegexMatcher,
     replacement: string,
   ): string {
     const output = new BoundedStringBuilder(
@@ -161,26 +157,12 @@ export class UserRegex implements RegexLike {
     return output.build();
   }
 
-  private acquireMatcher(input: string): ReturnType<RE2JS["matcher"]> {
+  private acquireMatcher(input: string): RegexMatcher {
     if (this._matcher === null) {
       this._matcher = this._re2.matcher(input);
-      this._matcherInput = input;
       return this._matcher;
     }
-    if (this._matcherInput !== input) {
-      // Swap the cached Utf16MatcherInput's charSequence in-place to avoid
-      // allocating a new Matcher per call. RE2JS's resetMatcherInput is not
-      // safe with raw strings (the constructor wraps strings via
-      // MatcherInput.utf16, but resetMatcherInput assigns its argument
-      // directly and then calls .length() as a method, which throws on a
-      // raw string). MatcherInput is not exported, so we mutate the existing
-      // wrapper's charSequence field — Matcher.reset() reads matcherInput.length()
-      // afterwards, so the new length is picked up correctly.
-      // biome-ignore lint/suspicious/noExplicitAny: reaching into re2js internals
-      (this._matcher as any).matcherInput.charSequence = input;
-      this._matcherInput = input;
-    }
-    this._matcher.reset();
+    this._matcher.reset(input);
     return this._matcher;
   }
 
@@ -204,11 +186,13 @@ export class UserRegex implements RegexLike {
     }
 
     try {
-      const translatedPattern = translatePattern(pattern);
-      const re2Flags = convertFlags(flags);
-      this._re2 = RE2JS.compile(translatedPattern, re2Flags);
+      this._re2 = engine.compile(pattern, {
+        ignoreCase: this._ignoreCase,
+        multiline: this._multiline,
+        dotAll: flags.includes("s"),
+      });
     } catch (e) {
-      if (e instanceof RE2JSSyntaxException) {
+      if (e instanceof RegexSyntaxError) {
         // Provide helpful error messages for unsupported RE2 features
         const msg = e.message || "";
         let explanation = "";

@@ -93,6 +93,17 @@ export {
 } from "./network/index.js";
 // Parser
 export { parse } from "./parser/parser.js";
+// Regex engine behind every user-provided pattern
+export {
+  type CompiledRegex,
+  getRegexEngine,
+  type RegexEngine,
+  type RegexEngineFlags,
+  type RegexMatcher,
+  RegexSyntaxError,
+  re2jsEngine,
+  setRegexEngine,
+} from "./regex/index.js";
 export type {
   CommandFinished as SandboxCommandFinished,
   OutputMessage,
