@@ -13,6 +13,7 @@ import { BoundedStringBuilder } from "../bounded-builder.js";
 import { ExecutionLimitError } from "../interpreter/errors.js";
 import {
   type CompiledRegex,
+  type RegexEngineFlags,
   type RegexMatcher,
   RegexSyntaxError,
 } from "./engine.js";
@@ -57,13 +58,22 @@ export interface RegexLike {
   lastIndex: number;
 }
 
+function engineFlagsFrom(flags: string): RegexEngineFlags {
+  return {
+    ignoreCase: flags.includes("i"),
+    multiline: flags.includes("m"),
+    dotAll: flags.includes("s"),
+    unicode: flags.includes("u"),
+  };
+}
+
 /**
  * A wrapper around the current execution's RegexEngine that provides a
  * RegExp-compatible interface. The engine guarantees linear-time matching,
  * providing ReDoS protection.
  */
 export class UserRegex implements RegexLike {
-  private readonly _re2: CompiledRegex;
+  private readonly _compiled: CompiledRegex;
   private readonly _pattern: string;
   private readonly _flags: string;
   private readonly _global: boolean;
@@ -98,8 +108,8 @@ export class UserRegex implements RegexLike {
       this.maxOutputBytes,
       "regular expression replacement",
     );
-    const groupCount = this._re2.groupCount();
-    const namedGroups = this._re2.namedGroups();
+    const groupCount = this._compiled.groupCount();
+    const namedGroups = this._compiled.namedGroups();
     for (let index = 0; index < replacement.length; index++) {
       const char = replacement[index];
       if (char === "\\" && index + 1 < replacement.length) {
@@ -142,7 +152,7 @@ export class UserRegex implements RegexLike {
 
   private acquireMatcher(input: string): RegexMatcher {
     if (this._matcher === null) {
-      this._matcher = this._re2.matcher(input);
+      this._matcher = this._compiled.matcher(input);
       return this._matcher;
     }
     this._matcher.reset(input);
@@ -169,12 +179,10 @@ export class UserRegex implements RegexLike {
     }
 
     try {
-      this._re2 = currentRegexEngine().compile(pattern, {
-        ignoreCase: this._ignoreCase,
-        multiline: this._multiline,
-        dotAll: flags.includes("s"),
-        unicode: flags.includes("u"),
-      });
+      this._compiled = currentRegexEngine().compile(
+        pattern,
+        engineFlagsFrom(flags),
+      );
     } catch (e) {
       if (e instanceof RegexSyntaxError) {
         // Provide helpful error messages for unsupported RE2 features
@@ -235,7 +243,7 @@ export class UserRegex implements RegexLike {
     }
 
     // Build result array
-    const groupCount = this._re2.groupCount();
+    const groupCount = this._compiled.groupCount();
     const result: string[] = [];
 
     // Group 0 is the full match
@@ -253,7 +261,7 @@ export class UserRegex implements RegexLike {
     execResult.input = input;
 
     // Add named groups if any
-    const namedGroups = this._re2.namedGroups();
+    const namedGroups = this._compiled.namedGroups();
     if (namedGroups && Object.keys(namedGroups).length > 0) {
       // Use Object.create(null) to prevent prototype pollution from names like __proto__
       const groups: { [key: string]: string } = Object.create(null);
@@ -325,7 +333,7 @@ export class UserRegex implements RegexLike {
     }
 
     if (typeof replacement === "string") {
-      const matcher = this._re2.matcher(input);
+      const matcher = this._compiled.matcher(input);
       const output = new BoundedStringBuilder(
         this.maxOutputBytes,
         "regular expression replacement",
@@ -358,12 +366,12 @@ export class UserRegex implements RegexLike {
       this.maxOutputBytes,
       "regular expression replacement",
     );
-    const matcher = this._re2.matcher(input);
+    const matcher = this._compiled.matcher(input);
     let lastEnd = 0;
     let pos = 0;
     let matchCount = 0;
-    const groupCount = this._re2.groupCount();
-    const namedGroups = this._re2.namedGroups();
+    const groupCount = this._compiled.groupCount();
+    const namedGroups = this._compiled.namedGroups();
 
     while (matcher.find(pos)) {
       // Add text before match
@@ -432,7 +440,7 @@ export class UserRegex implements RegexLike {
         ? this.maxResults
         : Math.min(limit, this.maxResults);
     const result: string[] = [];
-    const matcher = this._re2.matcher(input);
+    const matcher = this._compiled.matcher(input);
     let lastEnd = 0;
     let searchFrom = 0;
     while (result.length < effectiveLimit && matcher.find(searchFrom)) {
@@ -471,9 +479,9 @@ export class UserRegex implements RegexLike {
     // would be corrupted if a caller interleaves any other method on the same
     // UserRegex instance between two `next()` calls (acquireMatcher would
     // reset/repoint it). Use a fresh Matcher to keep iterator state private.
-    const matcher = this._re2.matcher(input);
-    const groupCount = this._re2.groupCount();
-    const namedGroups = this._re2.namedGroups();
+    const matcher = this._compiled.matcher(input);
+    const groupCount = this._compiled.groupCount();
+    const namedGroups = this._compiled.namedGroups();
     let pos = 0;
     let resultCount = 0;
 

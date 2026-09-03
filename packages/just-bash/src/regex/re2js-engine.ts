@@ -45,14 +45,8 @@ class Re2jsMatcherAdapter implements RegexMatcher {
   }
 
   reset(input: string): void {
-    // Swap the cached Utf16MatcherInput's charSequence in-place to avoid
-    // allocating a new Matcher per call. RE2JS's resetMatcherInput is not
-    // safe with raw strings (the constructor wraps strings via
-    // MatcherInput.utf16, but resetMatcherInput assigns its argument
-    // directly and then calls .length() as a method, which throws on a
-    // raw string). MatcherInput is not exported, so we mutate the existing
-    // wrapper's charSequence field — Matcher.reset() reads matcherInput.length()
-    // afterwards, so the new length is picked up correctly.
+    // re2js's resetMatcherInput throws on raw strings and MatcherInput is not
+    // exported, so retarget the existing wrapper; reset() re-reads its length.
     // biome-ignore lint/suspicious/noExplicitAny: reaching into re2js internals
     (this.matcher as any).matcherInput.charSequence = input;
     this.matcher.reset();

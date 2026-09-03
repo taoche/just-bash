@@ -18,7 +18,7 @@ import {
 const GLOB_CACHE_MAX = 2048;
 const globRegexCaches = new WeakMap<RegexEngine, Map<string, RegexLike>>();
 
-function globRegexCache(): Map<string, RegexLike> {
+function globRegexCacheForCurrentEngine(): Map<string, RegexLike> {
   const engine = currentRegexEngine();
   let cache = globRegexCaches.get(engine);
   if (!cache) {
@@ -72,7 +72,7 @@ export function matchGlob(
 
   // Build cache key
   const cacheKey = opts.ignoreCase ? `i:${cleanPattern}` : cleanPattern;
-  const cache = globRegexCache();
+  const cache = globRegexCacheForCurrentEngine();
   let re = cache.get(cacheKey);
 
   if (!re) {
