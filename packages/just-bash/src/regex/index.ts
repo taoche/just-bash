@@ -22,14 +22,17 @@ export {
   type RegexMatcher,
   RegexSyntaxError,
 } from "./engine.js";
+export {
+  currentRegexEngine,
+  runWithRegexEngine,
+  supportsRegexEngineOption,
+} from "./engine-context.js";
 export { re2jsEngine } from "./re2js-engine.js";
 export {
   ConstantRegex,
   createUserRegex,
-  getRegexEngine,
   type RegexLike,
   type ReplaceCallback,
-  setRegexEngine,
   UserRegex,
   type UserRegexLimits,
 } from "./user-regex.js";

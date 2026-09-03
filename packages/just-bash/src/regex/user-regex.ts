@@ -2,7 +2,7 @@
  * UserRegex - Centralized regex handling for user-provided patterns
  *
  * This module provides a single point of control for all user-provided regex
- * execution. Matching goes through the installed RegexEngine (re2js by
+ * execution. Matching goes through the execution's RegexEngine (re2js by
  * default) for ReDoS protection via linear-time matching.
  *
  * All user-provided regex patterns should go through this module.
@@ -13,11 +13,10 @@ import { BoundedStringBuilder } from "../bounded-builder.js";
 import { ExecutionLimitError } from "../interpreter/errors.js";
 import {
   type CompiledRegex,
-  type RegexEngine,
   type RegexMatcher,
   RegexSyntaxError,
 } from "./engine.js";
-import { re2jsEngine } from "./re2js-engine.js";
+import { currentRegexEngine } from "./engine-context.js";
 
 const DEFAULT_MAX_REGEX_RESULTS = 1_000_000;
 const DEFAULT_MAX_REGEX_OUTPUT_BYTES = 64 * 1024 * 1024;
@@ -58,26 +57,10 @@ export interface RegexLike {
   lastIndex: number;
 }
 
-let engine: RegexEngine = re2jsEngine;
-
 /**
- * Install the engine every UserRegex compiles and matches through, process-wide.
- * Returns the previously installed engine. The engine must guarantee
- * linear-time matching; see RegexEngine.
- */
-export function setRegexEngine(next: RegexEngine): RegexEngine {
-  const previous = engine;
-  engine = next;
-  return previous;
-}
-
-export function getRegexEngine(): RegexEngine {
-  return engine;
-}
-
-/**
- * A wrapper around the installed RegexEngine that provides a RegExp-compatible
- * interface. The engine guarantees linear-time matching, providing ReDoS protection.
+ * A wrapper around the current execution's RegexEngine that provides a
+ * RegExp-compatible interface. The engine guarantees linear-time matching,
+ * providing ReDoS protection.
  */
 export class UserRegex implements RegexLike {
   private readonly _re2: CompiledRegex;
@@ -186,10 +169,11 @@ export class UserRegex implements RegexLike {
     }
 
     try {
-      this._re2 = engine.compile(pattern, {
+      this._re2 = currentRegexEngine().compile(pattern, {
         ignoreCase: this._ignoreCase,
         multiline: this._multiline,
         dotAll: flags.includes("s"),
+        unicode: flags.includes("u"),
       });
     } catch (e) {
       if (e instanceof RegexSyntaxError) {

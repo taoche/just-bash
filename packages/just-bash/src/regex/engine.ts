@@ -3,8 +3,9 @@
  *
  * Every user-provided pattern (grep, sed, awk, jq, `[[ =~ ]]`, …) is compiled
  * and matched through one engine. The default is re2js, a pure-JS RE2 port,
- * which runs everywhere just-bash runs. A host may install another engine —
- * e.g. a native RE2 binding on Node — to trade portability for speed.
+ * which runs everywhere just-bash runs. A host may give a `Bash` instance
+ * another engine — e.g. a native RE2 binding on Node — via
+ * `new Bash({ regexEngine })` to trade portability for speed.
  *
  * Security contract for any installed engine: matching must be linear in the
  * input length for every pattern the engine accepts. UserRegex's ReDoS
@@ -15,6 +16,8 @@ export interface RegexEngineFlags {
   ignoreCase: boolean;
   multiline: boolean;
   dotAll: boolean;
+  /** JavaScript `u`: the pattern uses Unicode escapes such as `\u{1F600}`. */
+  unicode: boolean;
 }
 
 /**

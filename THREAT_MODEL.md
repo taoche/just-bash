@@ -344,7 +344,7 @@ Heredocs with variable expansion are size-limited (10MB) but nested heredocs wit
 | **Execution limits** | Primary | DoS | High — enforced at every loop/call/expansion |
 | **Prototype pollution guards** | Primary | Data integrity | Medium — requires discipline across all new code |
 | **Parser limits** | Primary | Parser DoS | High — token/depth/size/iteration limits |
-| **Linear-time regex engine** (re2js default) | Primary | ReDoS | High — linear-time guarantee (no backtracking); `setRegexEngine` hands this guarantee to the host |
+| **Linear-time regex engine** (re2js default) | Primary | ReDoS | High — linear-time guarantee (no backtracking); `BashOptions.regexEngine` hands this guarantee to the host |
 | **Defense-in-depth** (globals) | Secondary | JS escape | Medium — monkey-patching has inherent limits |
 | **Virtual process info** | Secondary | Info disclosure | High — no real values exposed |
 | **Error sanitization** | Secondary | Info disclosure | High — systematic at FS layers + all error choke points + node:internal paths |
