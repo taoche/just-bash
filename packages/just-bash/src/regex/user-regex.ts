@@ -150,6 +150,52 @@ export class UserRegex implements RegexLike {
     return output.build();
   }
 
+  private captureGroups(matcher: RegexMatcher): string[] {
+    const groupCount = this._compiled.groupCount();
+    const groups: string[] = [];
+    for (let i = 1; i <= groupCount; i++) {
+      groups.push(matcher.group(i) as string);
+    }
+    return groups;
+  }
+
+  // Null-prototype so a group named __proto__ cannot pollute the result.
+  // `missing` stands in for groups that did not participate; null omits them.
+  private namedGroupValues(
+    matcher: RegexMatcher,
+    missing: string | null,
+  ): Record<string, string> | undefined {
+    const entries = Object.entries(this._compiled.namedGroups());
+    if (entries.length === 0) {
+      return undefined;
+    }
+    const groups: Record<string, string> = Object.create(null);
+    for (const [name, index] of entries) {
+      const value = matcher.group(index) ?? missing;
+      if (value !== null) {
+        groups[name] = value;
+      }
+    }
+    return groups;
+  }
+
+  private buildMatchArray(
+    matcher: RegexMatcher,
+    input: string,
+  ): RegExpExecArray {
+    const result = [
+      matcher.group(0) ?? "",
+      ...this.captureGroups(matcher),
+    ] as unknown as RegExpExecArray;
+    result.index = matcher.start(0);
+    result.input = input;
+    const groups = this.namedGroupValues(matcher, null);
+    if (groups) {
+      result.groups = groups;
+    }
+    return result;
+  }
+
   private acquireMatcher(input: string): RegexMatcher {
     if (this._matcher === null) {
       this._matcher = this._compiled.matcher(input);
@@ -242,37 +288,7 @@ export class UserRegex implements RegexLike {
       return null;
     }
 
-    // Build result array
-    const groupCount = this._compiled.groupCount();
-    const result: string[] = [];
-
-    // Group 0 is the full match
-    result.push(matcher.group(0) ?? "");
-
-    // Add capture groups
-    for (let i = 1; i <= groupCount; i++) {
-      const group = matcher.group(i);
-      result.push(group as string);
-    }
-
-    // Add RegExpExecArray properties
-    const execResult = result as unknown as RegExpExecArray;
-    execResult.index = matcher.start(0);
-    execResult.input = input;
-
-    // Add named groups if any
-    const namedGroups = this._compiled.namedGroups();
-    if (namedGroups && Object.keys(namedGroups).length > 0) {
-      // Use Object.create(null) to prevent prototype pollution from names like __proto__
-      const groups: { [key: string]: string } = Object.create(null);
-      for (const [name, index] of Object.entries(namedGroups)) {
-        const value = matcher.group(index as number);
-        if (value !== null) {
-          groups[name] = value;
-        }
-      }
-      execResult.groups = groups;
-    }
+    const execResult = this.buildMatchArray(matcher, input);
 
     // Update lastIndex for global regex
     if (this._global) {
@@ -370,34 +386,20 @@ export class UserRegex implements RegexLike {
     let lastEnd = 0;
     let pos = 0;
     let matchCount = 0;
-    const groupCount = this._compiled.groupCount();
-    const namedGroups = this._compiled.namedGroups();
 
     while (matcher.find(pos)) {
-      // Add text before match
       this.assertResultCount(++matchCount);
       result.append(input.slice(lastEnd, matcher.start(0)));
 
-      // Build callback arguments
-      const args: (string | number | Record<string, string>)[] = [];
+      // Same argument list as String.prototype.replace hands its callback.
       const fullMatch = matcher.group(0) ?? "";
-
-      // Add capture groups
-      for (let i = 1; i <= groupCount; i++) {
-        args.push(matcher.group(i) as string);
-      }
-
-      // Add index and input
-      args.push(matcher.start(0));
-      args.push(input);
-
-      // Add named groups if present
-      if (namedGroups && Object.keys(namedGroups).length > 0) {
-        // Use Object.create(null) to prevent prototype pollution from names like __proto__
-        const groups: Record<string, string> = Object.create(null);
-        for (const [name, index] of Object.entries(namedGroups)) {
-          groups[name] = matcher.group(index as number) ?? "";
-        }
+      const args: (string | number | Record<string, string>)[] = [
+        ...this.captureGroups(matcher),
+        matcher.start(0),
+        input,
+      ];
+      const groups = this.namedGroupValues(matcher, "");
+      if (groups) {
         args.push(groups);
       }
 
@@ -480,39 +482,12 @@ export class UserRegex implements RegexLike {
     // UserRegex instance between two `next()` calls (acquireMatcher would
     // reset/repoint it). Use a fresh Matcher to keep iterator state private.
     const matcher = this._compiled.matcher(input);
-    const groupCount = this._compiled.groupCount();
-    const namedGroups = this._compiled.namedGroups();
     let pos = 0;
     let resultCount = 0;
 
     while (matcher.find(pos)) {
       this.assertResultCount(++resultCount);
-      // Build result array
-      const result: string[] = [];
-      result.push(matcher.group(0) ?? "");
-
-      for (let i = 1; i <= groupCount; i++) {
-        result.push(matcher.group(i) as string);
-      }
-
-      const execResult = result as unknown as RegExpMatchArray;
-      execResult.index = matcher.start(0);
-      execResult.input = input;
-
-      // Add named groups if any
-      if (namedGroups && Object.keys(namedGroups).length > 0) {
-        // Use Object.create(null) to prevent prototype pollution from names like __proto__
-        const groups: { [key: string]: string } = Object.create(null);
-        for (const [name, index] of Object.entries(namedGroups)) {
-          const value = matcher.group(index as number);
-          if (value !== null) {
-            groups[name] = value;
-          }
-        }
-        execResult.groups = groups;
-      }
-
-      yield execResult;
+      yield this.buildMatchArray(matcher, input);
 
       pos = matcher.end(0);
       // Prevent infinite loop on zero-length matches
